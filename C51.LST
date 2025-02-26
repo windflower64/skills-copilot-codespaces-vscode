@@ -1,0 +1,2254 @@
+C51 COMPILER V9.57.0.0   C51                                                               02/26/2025 10:49:05 PAGE 1   
+
+
+C51 COMPILER V9.57.0.0, COMPILATION OF MODULE C51
+OBJECT MODULE PLACED IN C51.OBJ
+COMPILER INVOKED BY: D:\keil\C51\BIN\C51.EXE C51.c OPTIMIZE(8,SPEED) BROWSE INCDIR(.\config) DEBUG OBJECTEXTEND TABS(2)
+
+line level    source
+
+   1          #include <reg51.H>
+   2          #include "LCD12864.h"
+   3          #include "1302.h"
+   4          #include "60S2EEPROM.h"   
+   5          #include <absacc.h>     //???
+   6          #include <string.h>     //???
+   7          #define  AA  3000000
+   8          //Õ¾µã   GPS
+   9          
+  10                    
+  11          sbit key1=P1^0;
+  12          sbit key2=P1^1;
+  13          sbit key3=P1^2;
+  14          sbit key4=P1^3;
+  15          sbit key5=P1^4;
+  16          sbit key6=P1^5;
+  17          sbit key7=P1^6;
+  18          sbit key8=P1^7;   //¶¨Òå°´¼üIO
+  19          
+  20          sbit led0=P3^4;
+  21          sbit led1=P3^5;
+  22          sbit led2=P3^6;
+  23          sbit led3=P3^7;   //¶¨ÒåÖ¸Ê¾µÆIO
+  24          
+  25          sbit Music_Busy=P3^2;   //¶¨Òå
+  26          
+  27          bit key1_flag=0;
+  28          bit key2_flag=0;
+  29          bit key3_flag=0;
+  30          bit key4_flag=0;
+  31          bit key5_flag=0;
+  32          bit key6_flag=0;
+  33          bit key7_flag=0;
+  34          bit key8_flag=0;    //¶¨Òå°´¼üÎ»±äÁ¿
+  35          
+  36          
+  37          
+  38          typedef struct {
+  39          ulong shangxing_JD_da[5];// ÉÏÐÐ¾­¶ÈÊý¾Ý£¨5 Õ¾£©
+  40          ulong shangxing_WD_da[5]; // ÉÏÐÐÎ¬¶È¶ÈÊý¾Ý£¨5 Õ¾£©
+  41          ulong xiaxing_JD_da[5]; // ÏÂÐÐ¾­¶ÈÊý¾Ý£¨5 Õ¾£©
+  42          ulong xiaxing_WD_da[5]; //ÏÂÐÐÎ¬¶È¶ÈÊý¾Ý£¨5 Õ¾£©
+  43            
+  44          }gps_data;
+  45          
+  46          typedef union
+  47           {
+  48               gps_data Vehicle_Obj;  
+  49               // ÒÔ½á¹¹Ìå·½Ê½´æ´¢ GPS Êý¾Ý  
+  50               uchar gps_Bytes[sizeof(gps_data)]; 
+  51               // ÒÔ×Ö½ÚÊý×é·½Ê½´æ´¢ GPS Êý¾Ý
+  52           }gps_shuju;
+  53          gps_shuju xdata gps_cun;
+  54           //Ê¹ÓÃ xdata ¹Ø¼ü×Ö´æ´¢ÔÚ Íâ²¿ RAM£¬±£´æ GPS Õ¾µãÊý¾Ý¡£
+  55          uchar flag_cun=0;//ÊÇ·ñ´æ´¢ GPS Êý¾ÝµÄ±êÖ¾Î»
+C51 COMPILER V9.57.0.0   C51                                                               02/26/2025 10:49:05 PAGE 2   
+
+  56          uchar Station_Count=1;//Õ¾µã¼ÆÊý£¬³õÊ¼Îª 1
+  57          sbit Busy=P3^2;// ÓïÒô²¥·ÅÄ£¿éµÄ BUSY ×´Ì¬¼ì²â
+  58          bit position=0;// Î»ÖÃ±êÖ¾Î»
+  59          bit Display_Reversal=0;// ÏÔÊ¾·­×ª
+  60          uchar state=0;//ÏÔÊ¾×´Ì¬±äÁ¿£¨¿ØÖÆ LCD ½çÃæ£©
+  61          bit s0=0;   //ÎÄ×ÖÉÁË¸±äÁ¿£¨¿ÉÄÜÓÃÓÚ LCD12864£©
+  62          uchar ms=0;     //¶¨Ê±Æ÷ÓÃµ½µÄ±äÁ¿
+  63          // state ×÷ÓÃ£º
+  64          //¿ØÖÆ LCD12864 ÏÔÊ¾ÄÚÈÝ£¬ÓÃÓÚ ¹¦ÄÜÑ¡Ôñ¡¢Ê±¼äµ÷Õû¡¢Õ¾µã¹ÜÀí¡£
+  65          
+  66          //·¢ÏÖÁ½¸öBugÒ»¸öÊÇ×Ô¶¯ÏÂ£¬µ½ÖÕµãÕ¾Ã»ÓÐ×Ô¶¯ÇÐ»»ÉÏÐÐ¡¢ÏÂÐÐ
+  67          //Ò»¸öÊÇ  ×Ô¶¯ÏÂ ÉÏÐÐÕ¾ÃûºÍÓïÒô²»ÕÕÓ¦
+  68          
+  69          uchar sec=0;// Ãë¼ÆÊý±äÁ¿
+  70          uchar sec1=0;// ±¸ÓÃÃë¼ÆÊý±äÁ¿
+  71          bit memory_flag=0;// ¼ÇÒä±êÖ¾Î»£¨´æ´¢Êý¾ÝÊ±¿ÉÄÜÓÃµ½£©
+  72          
+  73          uchar Sound=19;     //ÒôÁ¿´óÐ¡±äÁ¿
+  74          uchar Station=5;    //³µÕ¾×ÜÊý±äÁ¿
+  75          
+  76          bit Mode=0;         //µÈÓÚ0´ú±í¹Ì»¯    µÈÓÚ1´ú±í×Ô¶¨Òå
+  77          bit A_M=0;          //×Ô¶¯Ä£Ê½ºÍÊÖ¶¯Ä£Ê½
+  78          bit Upstream_Down=1;// ÉÏÐÐ/ÏÂÐÐ±êÖ¾Î»
+  79          uchar count=0;//¼ÆÊý±äÁ¿£¨¿ÉÄÜÓÃÓÚÕ¾µãÇÐ»»£©
+  80          
+  81          uint JD_Difference=100;  //34.800340,113.499447
+  82          uint WD_Difference=100;// ÔÊÐíµÄ¾­Î³¶ÈÎó²î
+  83          
+  84          uchar *pp;
+  85          
+  86          bit Sound_flag=1; //ÓïÒô²¥±¨±êÖ¾£¨1 = ²¥±¨£¬0 = ¾²Òô£©
+  87          
+  88           
+  89          
+  90          uchar code xiaxing1[] ="  ¶¯ÎïÔ°×ÜÕ¾    ";
+  91          uchar code xiaxing2[] ="  É³ºÓ¶¥Õ¾    ¡¡";
+  92          uchar code xiaxing3[] ="  É³ºÓ´ó½ÖÕ¾  ¡¡";
+  93          uchar code xiaxing4[] ="  ¾üÌåÔºÕ¾    ¡¡";
+  94          uchar code xiaxing5[] ="  Ê¡¾üÇøÕ¾    ¡¡";
+  95          
+  96          
+  97          uchar code shangxing1[] ="  Ê¡¾üÇøÕ¾    ¡¡";
+  98          uchar code shangxing2[] ="  ¾üÌåÔºÕ¾    ¡¡";
+  99          uchar code shangxing3[] ="  É³ºÓ´ó½ÖÕ¾  ¡¡";
+ 100          uchar code shangxing4[] ="  É³ºÓ¶¥Õ¾    ¡¡";
+ 101          uchar code shangxing5[] ="  ¶¯ÎïÔ°×ÜÕ¾    ";
+ 102          
+ 103          
+ 104                  
+ 105          
+ 106          uchar xdata A_dat[20];   //ÔÝ´æ´ÓGPSÌáÈ¡µÄ¾­Î³¶ÈÊý¾Ý
+ 107          uchar xdata B_dat[20];   //ÔÝ´æ´ÓGPSÌáÈ¡µÄ¾­Î³¶ÈÊý¾Ý
+ 108          uchar xdata GPS_dat[100]; // ÓÃÓÚÔÝ´æ GPS Ä£¿é·µ»ØµÄÍêÕû NMEA Ð­ÒéÊý¾Ý
+ 109          uchar subscript;     //´®¿ÚÊý¾Ý¼ÆÊý±äÁ¿
+ 110          
+ 111          
+ 112          
+ 113          uchar GPS_time=0;       //¼ì²âGPSÊÇ·ñ½ÓÊÕµ½ÓÐÐ§Êý¾Ý±äÁ¿
+ 114          float latitude,longitude; // ´æ´¢ **×ª»»ºóµÄÎ³¶È/¾­¶È** (¸¡µãÊý¸ñÊ½)
+ 115          unsigned long WD_A,JD_B; // ×îÖÕÏÔÊ¾²¢ÓÃÓÚ±È½ÏµÄÎ³¶È/¾­¶ÈÊý¾Ý
+ 116          
+ 117          bit GPS_Write=0;        //ÊÇ·ñ¿ªÆôGPSÐ£Ê±¸üÐÂÊ±¼äÊý¾Ý±êÖ¾Î»
+C51 COMPILER V9.57.0.0   C51                                                               02/26/2025 10:49:05 PAGE 3   
+
+ 118          uchar xdata NowTime[7]=0; //´ÓGPS·µ»ØµÄÊý¾ÝÀïÃæÌáÈ¡³öÊ±¼äÊý¾Ý
+ 119          bit memory_GPS_flag=1;// ¼ÇÂ¼ÊÇ·ñÐèÒª´æ´¢ GPS ½âÎöÊý¾Ý
+ 120          
+ 121          uchar Sec_set=0;// ¼ÆÊ±±äÁ¿£¨¿ÉÄÜÓÃÓÚ GPS Ê±¼äÐÞÕý£©
+ 122          
+ 123          uchar Time_Calibration=0;   //Ð£×¼Ê±¼ä±êÖ¾Î»
+ 124          
+ 125          
+ 126          
+ 127          // º¯ÊýµÄ×÷ÓÃÊÇ£º
+ 128          // ½«µ±Ç°ÏµÍ³²ÎÊý´æÈë EEPROM£¨·ÇÒ×Ê§ÐÔ´æ´¢Æ÷£©£¬±£Ö¤µôµç²»¶ªÊ§
+ 129          //¼ÇÂ¼ÏµÍ³µÄ¹Ø¼ü×´Ì¬£¨ÒôÁ¿¡¢³µÕ¾×ÜÊý¡¢Ä£Ê½¡¢Ð£Ê±¿ª¹Ø¡¢ÉÏÏÂÐÐ·½Ïò£©
+ 130          void memory()
+ 131           {
+ 132   1         if(memory_flag) //ÅÐ¶ÏÊÇ·ñÐèÒª´æ´¢Êý¾Ý
+ 133   1          {
+ 134   2          memory_flag=0;//Çå³ý memory_flag£¬·ÀÖ¹ÖØ¸´´æ´¢
+ 135   2          IapEraseSector(0x08000);//²Á³ýEEPROMÖ¸¶¨ÉÈÇø£¬0x08000ÊÇEEPROM´æ´¢µÄÆðÊ¼µØÖ·¡£
+ 136   2          IapProgramByte(0x08000,Sound);//½« Sound£¨ÒôÁ¿´óÐ¡±äÁ¿£©´æ´¢µ½ EEPROM µØÖ· 0x08000¡£
+ 137   2      
+ 138   2          IapProgramByte(0x08001,Station);         //¼ÇÂ¼³µÕ¾×ÜÊýStation = 10£¬±íÊ¾ ÓÐ 10 ¸ö³µÕ¾¡£
+ 139   2      
+ 140   2          if(GPS_Write)
+ 141   2            IapProgramByte(0x08002,1);   //¼ÇÂ¼×Ô¶¯Ð£Ê±±êÖ¾  GPS_Write=1,¾Í¼ÇÂ¼Îª1
+ 142   2            else IapProgramByte(0x08002,0); //¼ÇÂ¼×Ô¶¯Ð£Ê±±êÖ¾ ²»ÆôÓÃ GPS Ð£Ê±
+ 143   2        
+ 144   2          if(Mode)
+ 145   2            IapProgramByte(0x08003,1);//¼ÇÂ¼¹Ì»¯»¹ÊÇ×Ô¶¨ÒåMode=1, ÓÃ»§×Ô¶¨ÒåÄ£Ê½£¬´æÈë 0x08003 = 1¡£
+ 146   2            else IapProgramByte(0x08003,0); //¼ÇÂ¼¹Ì»¯»¹ÊÇ×Ô¶¨Òå  Mode=0,¾Í¼ÇÂ¼Îª0  
+ 147   2      
+ 148   2          if(A_M)
+ 149   2            IapProgramByte(0x08004,1);         //¼ÇÂ¼ÊÖ¶¯×Ô¶¯Ä£Ê½  A_M=1,×Ô¶¯Ä£Ê½£¨ÏµÍ³×Ô¶¯²¥·ÅÕ¾µãÐÅÏ¢£©
+ 150   2            else IapProgramByte(0x08004,0);           //¼ÇÂ¼ÊÖ¶¯×Ô¶¯Ä£Ê½  A_M=0,ÊÖ¶¯Ä£Ê½£¨ÈË¹¤°´¼ü´¥·¢Õ¾µãÐÅÏ¢£©
+             -  
+ 151   2      
+ 152   2          if(Upstream_Down) 
+ 153   2            IapProgramByte(0x08005,1);  //¼ÇÂ¼ÉÏÐÐÏÂÐÐ  Station_Count=1,¾Í¼ÇÂ¼Îª1
+ 154   2            else IapProgramByte(0x08005,0);  //¼ÇÂ¼ÉÏÐÐÏÂÐÐ  Station_Count=0,¾Í¼ÇÂ¼Îª0   
+ 155   2      
+ 156   2        }
+ 157   1       }
+ 158          
+ 159          
+ 160          
+ 161          
+ 162          
+ 163           
+ 164           
+ 165          
+ 166           
+ 167           
+ 168           
+ 169           
+ 170          
+ 171           
+ 172           
+ 173           
+ 174           //´Ó EEPROM ¶ÁÈ¡ÏµÍ³²ÎÊý£¨ÒôÁ¿¡¢³µÕ¾Êý¡¢GPS Ð£Ê±¡¢Ä£Ê½µÈ£©¡£
+ 175          //Èç¹û EEPROM ÀïÊý¾Ý´íÎó£¬»Ö¸´Ä¬ÈÏÖµ£¨·ÀÖ¹Êý¾ÝËð»µ£©¡£
+ 176          //¶ÁÈ¡Íê³Éºó£¬ÖØÐÂ´æ´¢£¬È·±£Êý¾ÝÕýÈ·ÐÔ¡£
+ 177           void read_memory() //´Ó EEPROM ¶ÁÈ¡´æ´¢µÄÏµÍ³²ÎÊý
+ 178           {
+C51 COMPILER V9.57.0.0   C51                                                               02/26/2025 10:49:05 PAGE 4   
+
+ 179   1          Sound=IapReadByte(0x08000);  //¶ÁÈ¡´æ´¢µÄÒôÁ¿´óÐ¡±äÁ¿
+ 180   1      //  Station=IapReadByte(0x08001); //¶ÁÈ¡µÄ¼ÇÂ¼³µÕ¾×ÜÊý
+ 181   1      
+ 182   1        if(Sound>30||Station>5) // Èç¹û¶ÁÈ¡µÄÒôÁ¿»ò³µÕ¾×ÜÊý³¬³öÕý³£·¶Î§
+ 183   1         {
+ 184   2           Sound=25;
+ 185   2           Station=7;//»Ö¸´Ä¬ÈÏÖµ
+ 186   2         }
+ 187   1          if(IapReadByte(0x08002)!=0&&IapReadByte(0x08002)!=1) //¶ÁÈ¡GPSÐ£Ê±±êÖ¾Î»GPS_WriteÖ»ÄÜÊÇ0½ûÓÃ»ò1ÆôÓÃ¡£
+ 188   1         {
+ 189   2            GPS_Write=1;    //Èç¹û¶ÁÈ¡²»¶Ô£¬Ä¬ÈÏ´ò¿ª
+ 190   2         } 
+ 191   1         else  
+ 192   1            GPS_Write=IapReadByte(0x08002); //Èç¹û¶Ô£¬½øÐÐ¸³Öµ
+ 193   1          if(IapReadByte(0x08003)!=0&&IapReadByte(0x08003)!=1) //¶ÁÈ¡´æ´¢µÄModeÖµ
+ 194   1         {
+ 195   2            Mode=0;// Ä¬ÈÏ `Mode = 0`£¨¹Ì»¯Ä£Ê½£©
+ 196   2         }
+ 197   1         else  
+ 198   1            Mode=IapReadByte(0x08003);// Êý¾ÝÕýÈ·£¬ÔòÖ±½Ó¸³Öµ
+ 199   1      
+ 200   1          if(IapReadByte(0x08004)!=0&&IapReadByte(0x08004)!=1) //¼ì²é A_M
+ 201   1         {
+ 202   2            A_M=0;// Ä¬ÈÏ `A_M = 0`£¨ÊÖ¶¯Ä£Ê½£©
+ 203   2         }else  
+ 204   1            A_M=IapReadByte(0x08004);// ¶ÁÈ¡µÄÖµºÏ·¨£¬ÔòÖ±½Ó¸³Öµ
+ 205   1      
+ 206   1          if(IapReadByte(0x08005)!=0&&IapReadByte(0x08005)!=1) //¼ì²é Upstream_Down
+ 207   1         {
+ 208   2            Upstream_Down=0;// Ä¬ÈÏ `Upstream_Down = 0`£¨ÉÏÐÐÄ£Ê½£©
+ 209   2         }else  
+ 210   1            Upstream_Down=IapReadByte(0x08005); // ¶ÁÈ¡µÄÖµºÏ·¨£¬ÔòÖ±½Ó¸³Öµ
+ 211   1      
+ 212   1           memory_flag=1; // ¶ÁÈ¡Íê³Éºó£¬½«Êý¾ÝÔÙ´Î´æ´¢µ½ EEPROM£¬È·±£Êý¾ÝÕýÈ·
+ 213   1      
+ 214   1       }
+ 215          
+ 216          
+ 217           
+ 218          
+ 219           
+ 220           
+ 221           
+ 222           
+ 223           
+ 224          
+ 225           
+ 226           
+ 227           
+ 228           
+ 229           //¸Ãº¯ÊýµÄÖ÷Òª¹¦ÄÜÊÇ ½« GPS Õ¾µãµÄ¾­Î³¶ÈÊý¾Ý´æÈë EEPROM£¬ÓÃÓÚµôµçºó»Ö¸´¡£
+ 230          //GPS Êý¾Ý·ÖÎª 4 ×é£¬Ã¿×é 5 ¸öÖµ£¬¹² 20 ¸öÕ¾µã£º
+ 231          //ÉÏÐÐÕ¾µã¾­¶È (shangxing_JD_da[5])
+ 232          //ÉÏÐÐÕ¾µãÎ³¶È (shangxing_WD_da[5])
+ 233          //ÏÂÐÐÕ¾µã¾­¶È (xiaxing_JD_da[5])
+ 234          //ÏÂÐÐÕ¾µãÎ³¶È (xiaxing_WD_da[5])
+ 235          //Ã¿¸ö¾­Î³¶ÈÊý¾Ý 4 ×Ö½Ú´æ´¢£¨ÎÞ·ûºÅ³¤ÕûÐÍ ulong£¬32 Î»£©¡£
+ 236          //EEPROM µØÖ· 0x08200 ¿ªÊ¼£¬Ã¿¸öÕ¾µãÊý¾ÝÕ¼ÓÃ 4 ×Ö½Ú£¬¹² 20 ¡Á 4 = 80 ×Ö½Ú¡£
+ 237          void memory_GPS() // ´æ´¢ GPS Êý¾Ý µ½ EEPROM£¨·ÇÒ×Ê§ÐÔ´æ´¢Æ÷£©
+ 238          {
+ 239   1        // void memory_GPS()// ´æ´¢ GPS Êý¾Ý µ½ EEPROM£¨·ÇÒ×Ê§ÐÔ´æ´¢Æ÷£©
+ 240   1      // {
+C51 COMPILER V9.57.0.0   C51                                                               02/26/2025 10:49:05 PAGE 5   
+
+ 241   1      //      unsigned char i=0;//i ÓÃÓÚÑ­»·¼ÆÊý£¨0~19£¬¹² 20 ¸öÕ¾µã£©
+ 242   1      //    if(memory_GPS_flag)//¼ì²é memory_GPS_flag£¨ÊÇ·ñÐèÒª´æ´¢£©
+ 243   1      //     {  
+ 244   1      //       memory_GPS_flag=0; //Çå³ý±êÖ¾£¬±ÜÃâÖØ¸´´æ´¢
+ 245   1      //       IapEraseSector(0x08200);// ²Á³ý EEPROM ÉÈÇø£¨0x08200 ~ 0x083FF£©
+ 246   1      //       for(i=0;i<20;i++)     // ±éÀú 20 ¸ö GPS Õ¾µã        
+ 247   1      //       {
+ 248   1      ////              i = 0 ~ 4 ¡ú ÉÏÐÐ¾­¶È (shangxing_JD_da[5])
+ 249   1      ////              i = 5 ~ 9 ¡ú ÉÏÐÐÎ³¶È (shangxing_WD_da[5])
+ 250   1      ////              i = 10 ~ 14 ¡ú ÏÂÐÐ¾­¶È (xiaxing_JD_da[5])
+ 251   1      ////              i = 15 ~ 19 ¡ú ÏÂÐÐÎ³¶È (xiaxing_WD_da[5])
+ 252   1      //            if(i<5) 
+ 253   1      //         {
+ 254   1      //          IapProgramByte(0x08200+i*4,gps_cun.Vehicle_Obj.shangxing_JD_da[i]/16777216%256);//µÚ 1 ×Ö½Ú£¨¸ß 8 Î
+             -»£©
+ 255   1      //          IapProgramByte(0x08200+i*4+1,gps_cun.Vehicle_Obj.shangxing_JD_da[i]/65536%256);//µÚ 2 ×Ö½Ú£¨´Î¸ß 8 
+             -Î»£©
+ 256   1      //          IapProgramByte(0x08200+i*4+2,gps_cun.Vehicle_Obj.shangxing_JD_da[i]/256%256);//µÚ 3 ×Ö½Ú£¨´ÎµÍ 8 Î»
+             -£©
+ 257   1      //          IapProgramByte(0x08200+i*4+3,gps_cun.Vehicle_Obj.shangxing_JD_da[i]%256);//µÚ 4 ×Ö½Ú£¨×îµÍ 8 Î»£©
+ 258   1      //         }
+ 259   1      //         else if(i<10) 
+ 260   1      //          {
+ 261   1      //          IapProgramByte(0x08200+i*4,gps_cun.Vehicle_Obj.shangxing_WD_da[i-5]/16777216%256);
+ 262   1      //          IapProgramByte(0x08200+i*4+1,gps_cun.Vehicle_Obj.shangxing_WD_da[i-5]/65536%256);
+ 263   1      //          IapProgramByte(0x08200+i*4+2,gps_cun.Vehicle_Obj.shangxing_WD_da[i-5]/256%256);
+ 264   1      //          IapProgramByte(0x08200+i*4+3,gps_cun.Vehicle_Obj.shangxing_WD_da[i-5]%256);
+ 265   1      //          }
+ 266   1      //         else if(i<15) 
+ 267   1      //          {
+ 268   1      //          IapProgramByte(0x08200+i*4,gps_cun.Vehicle_Obj.xiaxing_JD_da[i-10]/16777216%256);
+ 269   1      //          IapProgramByte(0x08200+i*4+1,gps_cun.Vehicle_Obj.xiaxing_JD_da[i-10]/65536%256);
+ 270   1      //          IapProgramByte(0x08200+i*4+2,gps_cun.Vehicle_Obj.xiaxing_JD_da[i-10]/256%256);
+ 271   1      //          IapProgramByte(0x08200+i*4+3,gps_cun.Vehicle_Obj.xiaxing_JD_da[i-10]%256);
+ 272   1      //          }
+ 273   1      //         else if(i<20) 
+ 274   1      //          {
+ 275   1      //          IapProgramByte(0x08200+i*4,gps_cun.Vehicle_Obj.xiaxing_WD_da[i-15]/16777216%256);
+ 276   1      //          IapProgramByte(0x08200+i*4+1,gps_cun.Vehicle_Obj.xiaxing_WD_da[i-15]/65536%256);
+ 277   1      //          IapProgramByte(0x08200+i*4+2,gps_cun.Vehicle_Obj.xiaxing_WD_da[i-15]/256%256);
+ 278   1      //          IapProgramByte(0x08200+i*4+3,gps_cun.Vehicle_Obj.xiaxing_WD_da[i-15]%256);
+ 279   1      //          }
+ 280   1      //       }
+ 281   1      //     }
+ 282   1      // }
+ 283   1      
+ 284   1          unsigned char i = 0; // i ÓÃÓÚÑ­»·¼ÆÊý£¨0~19£¬¹² 20 ¸öÕ¾µã£©
+ 285   1      
+ 286   1          if (memory_GPS_flag) // ¼ì²é memory_GPS_flag£¨ÊÇ·ñÐèÒª´æ´¢£©
+ 287   1          {
+ 288   2              memory_GPS_flag = 0; // Çå³ý±êÖ¾£¬±ÜÃâÖØ¸´´æ´¢
+ 289   2              IapEraseSector(0x08200); // ²Á³ý EEPROM ÉÈÇø£¨0x08200 ~ 0x083FF£©
+ 290   2      
+ 291   2              for (i = 0; i < 20; i++) // ±éÀú 20 ¸ö GPS Õ¾µã
+ 292   2              {
+ 293   3                  unsigned char* data_ptr;
+ 294   3                  if (i < 5)
+ 295   3                  {
+ 296   4                      // ÉÏÐÐ¾­¶È (shangxing_JD_da[5])
+ 297   4                      data_ptr = (unsigned char*)&gps_cun.Vehicle_Obj.shangxing_JD_da[i];
+ 298   4                  }
+ 299   3                  else if (i < 10)
+C51 COMPILER V9.57.0.0   C51                                                               02/26/2025 10:49:05 PAGE 6   
+
+ 300   3                  {
+ 301   4                      // ÉÏÐÐÎ³¶È (shangxing_WD_da[5])
+ 302   4                      data_ptr = (unsigned char*)&gps_cun.Vehicle_Obj.shangxing_WD_da[i - 5];
+ 303   4                  }
+ 304   3                  else if (i < 15)
+ 305   3                  {
+ 306   4                      // ÏÂÐÐ¾­¶È (xiaxing_JD_da[5])
+ 307   4                      data_ptr = (unsigned char*)&gps_cun.Vehicle_Obj.xiaxing_JD_da[i - 10];
+ 308   4                  }
+ 309   3                  else
+ 310   3                  {
+ 311   4                      // ÏÂÐÐÎ³¶È (xiaxing_WD_da[5])
+ 312   4                      data_ptr = (unsigned char*)&gps_cun.Vehicle_Obj.xiaxing_WD_da[i - 15];
+ 313   4                  }
+ 314   3      
+ 315   3                  // ½«Êý¾Ý°´×Ö½ÚÐ´Èë EEPROM
+ 316   3                  IapProgramByte(0x08200 + i * 4, data_ptr[3]); // µÚ 1 ×Ö½Ú£¨×î¸ß 8 Î»£©
+ 317   3                  IapProgramByte(0x08200 + i * 4 + 1, data_ptr[2]); // µÚ 2 ×Ö½Ú
+ 318   3                  IapProgramByte(0x08200 + i * 4 + 2, data_ptr[1]); // µÚ 3 ×Ö½Ú
+ 319   3                  IapProgramByte(0x08200 + i * 4 + 3, data_ptr[0]); // µÚ 4 ×Ö½Ú£¨×îµÍ 8 Î»£©
+ 320   3              }
+ 321   2          }
+ 322   1      }
+ 323           
+ 324          
+ 325          
+ 326           
+ 327           
+ 328           
+ 329           
+ 330          
+ 331          
+ 332          
+ 333          //¸Ãº¯ÊýÓÃÓÚ ´Ó EEPROM ¶ÁÈ¡ GPS Êý¾Ý 
+ 334          //²¢´æÈë gps_cun ½á¹¹Ìå±äÁ¿£¬ÒÔ±ãºóÐø´¦Àí¡£
+ 335          //EEPROM µØÖ· 0x08200 ´¦´æ´¢ÁË ÉÏÐÐ/ÏÂÐÐÕ¾µãµÄ¾­Î³¶ÈÊý¾Ý¡£
+ 336          void read_GPS()
+ 337           {
+ 338   1           
+ 339   1           pp=gps_cun.gps_Bytes;
+ 340   1         // ½« gps_cun.gps_Bytes µÄµØÖ·¸³¸øÖ¸Õë pp£¬·½±ã²Ù×÷Êý¾Ý
+ 341   1           IapReadSector(0x08200, sizeof(gps_data), pp);
+ 342   1         // ´Ó EEPROM µØÖ· 0x08200 ¶ÁÈ¡Ò»Õû¿éÊý¾Ý
+ 343   1       }
+ 344          
+ 345          
+ 346          
+ 347           
+ 348           
+ 349           
+ 350          //¸Ãº¯ÊýÓÃÓÚÍ¨¹ý´®¿Ú·¢ËÍÒ»¸ö×Ö½ÚµÄÊý¾Ý¡£
+ 351          //½«´«ÈëµÄ×Ö½ÚÊý¾Ý´æÈë´®¿Ú·¢ËÍ»º³å¼Ä´æÆ÷¡£
+ 352          //µÈ´ý·¢ËÍÍê³É±êÖ¾Î»±»ÖÃÎ»£¬±íÊ¾Êý¾Ý·¢ËÍÍê³É¡£
+ 353          //Çå³ý·¢ËÍÍê³É±êÖ¾Î»£¬ÎªÏÂÒ»´Î·¢ËÍ×ö×¼±¸¡£
+ 354           void Uart1Data(uchar dat)  // ´®¿Ú·¢ËÍÒ»¸ö×Ö½ÚÊý¾Ý
+ 355          {
+ 356   1        SBUF=dat;// ½«´«ÈëµÄ×Ö½ÚÊý¾Ý´æÈë´®¿Ú·¢ËÍ»º³å¼Ä´æÆ÷SBUF
+ 357   1        while(!TI);// µÈ´ý·¢ËÍÍê³É±êÖ¾Î»TIÖÃÎ»£¬±íÊ¾Êý¾Ý·¢ËÍÍê³É
+ 358   1        TI=0; // Çå³ý·¢ËÍÍê³É±êÖ¾Î»TI£¬ÎªÏÂÒ»´Î·¢ËÍ×ö×¼±¸
+ 359   1      }
+ 360          
+ 361          
+C51 COMPILER V9.57.0.0   C51                                                               02/26/2025 10:49:05 PAGE 7   
+
+ 362          
+ 363          
+ 364          
+ 365          //¸Ãº¯ÊýÓÃÓÚÍ¨¹ý´®¿Ú·¢ËÍÒ»´®Êý¾Ý¡£
+ 366          //'while£¨*byte £¡=£ºÑ­»·±éÀú×Ö·û´®£¬Ö±µ½Óöµ½×Ö·û´®½áÊø·û ¡£
+ 367          //'Uart1Êý¾Ý£ºµ÷ÓÃº¯Êý·¢ËÍµ±Ç°×Ö½ÚÊý¾Ý£¬²¢½«Ö¸ÕëÒÆ¶¯µ½ÏÂÒ»¸ö×Ö½Ú¡£
+ 368          void UartData_Byte(uchar *byte) //´®¿Ú·¢ËÍÒ»´®Êý¾Ý
+ 369          {
+ 370   1        while(*byte != '\0')
+ 371   1          // Ñ­»·±éÀú×Ö·û´®£¬Ö±µ½Óöµ½×Ö·û´®½áÊø·û '\0'
+ 372   1        {
+ 373   2          Uart1Data(*byte++);
+ 374   2          // ·¢ËÍµ±Ç°×Ö½ÚÊý¾Ý£¬²¢½«Ö¸ÕëÒÆ¶¯µ½ÏÂÒ»¸ö×Ö½Ú
+ 375   2        }
+ 376   1      }
+ 377          
+ 378          
+ 379          
+ 380          
+ 381          
+ 382          //¸Ãº¯ÊýÓÃÓÚ²úÉúÒ»¸öÑÓ³Ù£¬ÑÓ³ÙµÄÊ±¼äÓÉ´«Èë¾ö¶¨¡£
+ 383          // Ñ­»·µÝ¼õ´«ÈëµÄdatÖµ£¬Ö±µ½Æä±äÎª0
+ 384          void delay(uint dat) 
+ 385           {
+ 386   1         while(dat--);
+ 387   1       }
+ 388          
+ 389          
+ 390          
+ 391           
+ 392           
+ 393           
+ 394           //¸Ãº¯ÊýÓÃÓÚÐ£Ñé´Ó·þÎñÆ÷·µ»ØµÄÊý¾ÝÊÇ·ñÓë±¾µØ´æ´¢µÄGPS_datÊý¾ÝÒ»ÖÂ¡£
+ 395           uchar verify_GPSdat(uchar *dat)//¶ÁÈ¡·þÎñÆ÷·µ»ØµÄÊý¾Ý
+ 396          {
+ 397   1        uchar i=0;
+ 398   1        while(*dat != 0)// ±éÀú´«ÈëµÄÊý¾Ý£¬Ö±µ½Óöµ½×Ö·û´®½áÊø·û '\0'
+ 399   1          {
+ 400   2          if(*dat != GPS_dat[i])
+ 401   2            // ±È½Ï´«ÈëµÄÊý¾ÝºÍ GPS_dat ÖÐµÄ¶ÔÓ¦Î»ÖÃµÄÊý¾Ý
+ 402   2          {
+ 403   3            return 0; // Èç¹ûÓÐ²»Æ¥ÅäµÄÇé¿ö£¬·µ»Ø 0 ±íÊ¾Ð£ÑéÊ§°Ü
+ 404   3          }
+ 405   2          i++; // Èç¹ûÆ¥Åä£¬¼ÌÐø±È½ÏÏÂÒ»¸ö×Ö½Ú
+ 406   2          dat++;
+ 407   2        }
+ 408   1        GPS_dat[0]=0;
+ 409   1        // Èç¹ûËùÓÐÊý¾Ý¶¼Æ¥Åä£¬½« GPS_dat µÄµÚÒ»¸ö×Ö½ÚÖÃ 0
+ 410   1        return 1;// ·µ»Ø 1 ±íÊ¾Ð£Ñé³É¹¦
+ 411   1      }
+ 412          
+ 413          
+ 414          
+ 415          
+ 416          
+ 417          
+ 418          //¸Ãº¯ÊýÓÃÓÚÍ¨¹ý´®¿Ú·¢ËÍÒ»´®Ê®Áù½øÖÆÊý¾Ý¡£
+ 419          //²ÎÊý ÊÇÒ»¸öÖ¸ÏòÎÞ·ûºÅ×Ö·ûp
+ 420          //²ÎÊýnumÊÇÎÞ·ûºÅ×Ö·û£¬±íÊ¾Òª·¢ËÍµÄ×Ö·ûÊýÁ¿¡£
+ 421          void Send_Hex(unsigned char *p,unsigned char num)
+ 422          {
+ 423   1          while(num--)   //Ê£Óà·¢ËÍµÄ×Ö·ûÊý
+C51 COMPILER V9.57.0.0   C51                                                               02/26/2025 10:49:05 PAGE 8   
+
+ 424   1        {
+ 425   2              SBUF = *p; //½«Òª·¢ËÍµÄÊý¾Ý¸³¸ø´®¿Ú»º³å¼Ä´æÆ÷
+ 426   2          while(!TI);//µÈ´ý·¢ËÍ½áÊø
+ 427   2          TI = 0;    //Èí¼þÇåÁã
+ 428   2          p++;       // Ö¸ÕëÖ¸ÏòÏÂÒ»¸ö×Ö·û
+ 429   2        } 
+ 430   1      }
+ 431          
+ 432          
+ 433          
+ 434          
+ 435          
+ 436          //´úÂëÊµÏÖÁËÒ»¸öÐ£ÑéºÍ¼ÆËãº¯Êý£¬
+ 437          //ÓÃÓÚ¼ÆËã×Ö·û´®µÄÐ£ÑéºÍ£¬
+ 438          //²¢½«½á¹û´æ´¢ÔÚ×Ö·û´®µÄÄ©Î²Á½¸ö×Ö½ÚÖÐ¡£
+ 439          void DoSum(unsigned char *Str,unsigned char len)//Ð£ÑéÎ»¼ÆËã
+ 440          {
+ 441   1        unsigned int xorsum = 0; 
+ 442   1      // ¶¨ÒåÒ»¸öÎÞ·ûºÅÕûÐÍ±äÁ¿ xorsum ²¢³õÊ¼»¯Îª 0£¬
+ 443   1      //ÓÃÓÚÀÛ¼Ó¼ÆËãÐ£ÑéºÍ
+ 444   1        unsigned char i;
+ 445   1      
+ 446   1        for(i=1;i<len;i++)
+ 447   1        // Ñ­»·±éÀú×Ö·û´®£¬´ÓË÷Òý 1 ¿ªÊ¼µ½ len-1£¬ÀÛ¼ÓÃ¿¸ö×Ö·ûµÄÖµ
+ 448   1        {
+ 449   2          xorsum = xorsum + Str[i];
+ 450   2        }
+ 451   1        xorsum = 0 - xorsum;// ½«ÀÛ¼ÓºÍÈ¡·´
+ 452   1        *(Str+i)     = (unsigned char)(xorsum >> 8);
+ 453   1        // ½«Ð£ÑéºÍµÄ¸ß 8 Î»´æÈë×Ö·û´®µÄµÚ len Î»
+ 454   1        *(Str+i+1)   = (unsigned char)(xorsum & 0x00ff);
+ 455   1         // ½«Ð£ÑéºÍµÄµÍ 8 Î»´æÈë×Ö·û´®µÄµÚ len + 1 Î»
+ 456   1      }
+ 457          
+ 458          
+ 459          
+ 460          
+ 461          
+ 462          
+ 463          //´úÂëÊµÏÖÁËÒ»¸ö·¢ËÍÒôÀÖÖ¸ÁîµÄº¯Êý£¬
+ 464          //½«Ö¸ÁîÊý¾Ý°´ÕÕÌØ¶¨¸ñÊ½Ìî³äµ½Êý×éÖÐ£¬
+ 465          //²¢¼ÆËãÐ£ÑéÂë£¬×îºóÍ¨¹ý´®¿Ú·¢ËÍÍêÕûµÄÖ¸ÁîÊý¾Ý¡£
+ 466          void Send_Appoint_Music(unsigned char dat )
+ 467           {   //7E FF 06 03 00 00 01 FE F7 EF
+ 468   1          unsigned char Table[10];
+ 469   1          // ÉèÖÃÖ¸ÁîÍ·
+ 470   1          Table[0] = 0x7E;
+ 471   1          Table[1] = 0xFF;
+ 472   1          Table[2] = 0x06;
+ 473   1        
+ 474   1          Table[3] = 0x03; 
+ 475   1          // Ö¸ÁîÂë£¬±íÊ¾²¥·ÅÖ¸¶¨ÒôÀÖ
+ 476   1          Table[4] = 0x00; 
+ 477   1          Table[5] = 0x00;
+ 478   1          // Ìî³ä±£Áô×Ö¶Î
+ 479   1          Table[6] = dat; 
+ 480   1          // ÉèÖÃÒª²¥·ÅµÄÒôÀÖ±àºÅ
+ 481   1          DoSum(Table,7);// ¼ÆËãÐ£ÑéÂë²¢Ìî³ä
+ 482   1          Table[9] = 0xEF;//½áÊøÂë
+ 483   1          
+ 484   1          Send_Hex(Table,10);//·¢ËÍÖ¸ÁîÊý¾Ý
+ 485   1       }
+C51 COMPILER V9.57.0.0   C51                                                               02/26/2025 10:49:05 PAGE 9   
+
+ 486          
+ 487          
+ 488           
+ 489           
+ 490           
+ 491          // ´úÂëÊµÏÖÁËÒ»¸ö·¢ËÍÉèÖÃÒôÁ¿Ö¸ÁîµÄº¯Êý£¬
+ 492          // ½«Ö¸ÁîÊý¾Ý°´ÕÕÌØ¶¨¸ñÊ½Ìî³äµ½Êý×éÖÐ£¬
+ 493          // ²¢¼ÆËãÐ£ÑéÂë£¬×îºóÍ¨¹ý´®¿Ú·¢ËÍÍêÕûµÄÖ¸ÁîÊý¾Ý¡£
+ 494            void Send_Appoint_Sound(unsigned char dat)
+ 495           {
+ 496   1         if(Music_Busy==0&&s0)  
+ 497   1           // ¼ì²é Music_Busy ºÍ s0 ×´Ì¬£¬Èç¹ûÌõ¼þÂú×ãÔò·¢ËÍÖ¸Áî
+ 498   1          {
+ 499   2          unsigned char Table[10];
+ 500   2          // ÉèÖÃÖ¸ÁîÍ·
+ 501   2          Table[0] = 0x7E;
+ 502   2          Table[1] = 0xFF;
+ 503   2          Table[2] = 0x06;
+ 504   2        
+ 505   2          Table[3] = 0x06; 
+ 506   2          // Ö¸ÁîÂë£¬±íÊ¾ÉèÖÃÒôÁ¿
+ 507   2          Table[4] = 0x00;
+ 508   2          Table[5] = 0x00;
+ 509   2          // Ìî³ä±£Áô×Ö¶Î
+ 510   2          Table[6] = dat;//ÒôÁ¿
+ 511   2          DoSum(Table,7);//¼ÆËãÐ£ÑéÂë 
+ 512   2          Table[9] = 0xEF;//½áÊøÂë
+ 513   2          
+ 514   2          Send_Hex(Table,10);//·¢ËÍÖ¸ÁîÊý¾Ý
+ 515   2        }
+ 516   1       }
+ 517          
+ 518          
+ 519           
+ 520           
+ 521           
+ 522           
+ 523          // ´úÂëÊµÏÖÁËÒ»¸ö¶ÁÈ¡ºÍÉèÖÃDS1302Ê±¼äÊý¾ÝµÄº¯Êý£¬
+ 524          // Í¨¹ýÅÐ¶ÏµÄ×´Ì¬À´¾ö¶¨ÊÇ¶ÁÈ¡»¹ÊÇÉèÖÃÊ±¼äÊý¾Ý£¬
+ 525          // ²¢½øÐÐÏàÓ¦µÄ´¦Àí¡£
+ 526           void read_time1() //ÊµÊ±¶ÁÈ¡DS1302ÖÐµÄÊ±¼äÊý¾Ý
+ 527          {
+ 528   1       uchar i;
+ 529   1        
+ 530   1           if(state==0)
+ 531   1            {
+ 532   2              // ¶ÁÈ¡DS1302ÖÐµÄÊ±¼äÊý¾Ý£¬²¢´æ´¢ÔÚtime_dataÊý×é
+ 533   2              time_data[0]=ds1302read(0x81);
+ 534   2              time_data[1]=ds1302read(0x83);
+ 535   2              time_data[2]=ds1302read(0x85);
+ 536   2              time_data[3]=ds1302read(0x87);
+ 537   2              time_data[4]=ds1302read(0x89);
+ 538   2              time_data[5]=ds1302read(0x8D);    
+ 539   2              // ½«¶ÁÈ¡µ½µÄÊ±¼äÊý¾Ý×ª»»ÎªÊ®½øÖÆ¸ñÊ½£¬
+ 540   2              //´æ´¢ÔÚtime_data_1Êý×éÖÐ
+ 541   2              time_data_1[0]=time_data[0]/16*10+time_data[0]%16;
+ 542   2              time_data_1[1]=time_data[1]/16*10+time_data[1]%16;
+ 543   2              time_data_1[2]=time_data[2]/16*10+time_data[2]%16;
+ 544   2              time_data_1[3]=time_data[3]/16*10+time_data[3]%16;
+ 545   2              time_data_1[4]=time_data[4]/16*10+time_data[4]%16;
+ 546   2              time_data_1[5]=time_data[5]/16*10+time_data[5]%16;
+ 547   2               if(time_data_1[0]>59)
+C51 COMPILER V9.57.0.0   C51                                                               02/26/2025 10:49:05 PAGE 10  
+
+ 548   2              // Èç¹ûÃëÖÓÊý¾Ý´óÓÚ59£¬ËµÃ÷¶ÁÈ¡µÄÊý¾ÝÓÐÎó£¬½øÐÐ³õÊ¼»¯
+ 549   2                 {
+ 550   3                ds1302write(0x8e,0x00); 
+ 551   3                ds1302write(0x80,0x80);
+ 552   3                ds1302write(0x80,0);
+ 553   3                ds1302write(0x8e,0x80);     
+ 554   3                 }
+ 555   2                ds1302write(0x8e,0x80);         
+ 556   2            } 
+ 557   1            else 
+ 558   1             {
+ 559   2              ds1302write(0x8e,0x00); 
+ 560   2              ds1302write(0x80,0x80);
+ 561   2              // ½«time_data_1ÖÐµÄÊ±¼äÊý¾Ý×ª»»ÎªBCDÂë£¬
+ 562   2               //²¢´æ´¢ÔÚtime_data_4Êý×éÖÐ
+ 563   2              for(i=0;i<7;i++)
+ 564   2              {
+ 565   3                time_data_2[i]=time_data_1[i]/10;
+ 566   3                time_data_3[i]=time_data_1[i]%10;   
+ 567   3              }
+ 568   2              for(i=0;i<7;i++)
+ 569   2              {
+ 570   3                time_data_4[i]=time_data_2[i]*16+time_data_3[i];
+ 571   3                
+ 572   3              }
+ 573   2              // ½«×ª»»ºóµÄÊ±¼äÊý¾ÝÐ´ÈëDS1302ÖÐ
+ 574   2              ds1302write(0x80,time_data_4[0]);
+ 575   2              ds1302write(0x82,time_data_4[1]);
+ 576   2              ds1302write(0x84,time_data_4[2]);
+ 577   2              ds1302write(0x86,time_data_4[3]);
+ 578   2              ds1302write(0x88,time_data_4[4]);
+ 579   2              ds1302write(0x8C,time_data_4[5]);
+ 580   2             }     
+ 581   1      
+ 582   1      }
+ 583          
+ 584          
+ 585          
+ 586          
+ 587          
+ 588          //ÏÔÊ¾º¯Êý
+ 589          void Display() {
+ 590   1          uchar dat = 0; // ¶¨ÒåÒ»¸öÎÞ·ûºÅ×Ö·û±äÁ¿ dat ²¢³õÊ¼»¯Îª 0
+ 591   1      
+ 592   1          // ¸ù¾Ý state µÄÖµ¾ö¶¨ÏÔÊ¾ÄÚÈÝ
+ 593   1          if (state <= 6) {
+ 594   2              LCD12864_pos(0, 0); // ÉèÖÃ LCD Î»ÖÃÎªµÚ 0 ÐÐµÚ 0 ÁÐ
+ 595   2      
+ 596   2              // ÏÔÊ¾Äê·Ý
+ 597   2              if (state == 1 && s0) {
+ 598   3                  LCD12864_writebyte("    "); // Èç¹û state Îª 1 ²¢ÇÒ s0 ÎªÕæ£¬ÏÔÊ¾¿Õ¸ñ
+ 599   3              } else {
+ 600   3                  LCD12864_writebyte("20"); // ÏÔÊ¾¹Ì¶¨Äê·ÝÇ°Á½Î» "20"
+ 601   3                  LCD12864_write(1, 0x30 + time_data_1[5] / 10); // ÏÔÊ¾Äê·ÝµÄÊ®Î»
+ 602   3                  LCD12864_write(1, 0x30 + time_data_1[5] % 10); // ÏÔÊ¾Äê·ÝµÄ¸öÎ»
+ 603   3              }
+ 604   2      
+ 605   2              LCD12864_writebyte("-"); // ÏÔÊ¾·Ö¸ô·û "-"
+ 606   2              
+ 607   2              // ÏÔÊ¾ÔÂ·Ý
+ 608   2              if (state == 2 && s0) {
+ 609   3                  LCD12864_writebyte("  "); // Èç¹û state Îª 2 ²¢ÇÒ s0 ÎªÕæ£¬ÏÔÊ¾¿Õ¸ñ
+C51 COMPILER V9.57.0.0   C51                                                               02/26/2025 10:49:05 PAGE 11  
+
+ 610   3              } else {
+ 611   3                  LCD12864_write(1, 0x30 + time_data_1[4] / 10); // ÏÔÊ¾ÔÂ·ÝµÄÊ®Î»
+ 612   3                  LCD12864_write(1, 0x30 + time_data_1[4] % 10); // ÏÔÊ¾ÔÂ·ÝµÄ¸öÎ»
+ 613   3              }
+ 614   2      
+ 615   2              LCD12864_writebyte("-"); // ÏÔÊ¾·Ö¸ô·û "-"
+ 616   2              
+ 617   2              // ÏÔÊ¾ÈÕÆÚ
+ 618   2              if (state == 3 && s0) {
+ 619   3                  LCD12864_writebyte("  "); // Èç¹û state Îª 3 ²¢ÇÒ s0 ÎªÕæ£¬ÏÔÊ¾¿Õ¸ñ
+ 620   3              } else {
+ 621   3                  LCD12864_write(1, 0x30 + time_data_1[3] / 10); // ÏÔÊ¾ÈÕÆÚµÄÊ®Î»
+ 622   3                  LCD12864_write(1, 0x30 + time_data_1[3] % 10); // ÏÔÊ¾ÈÕÆÚµÄ¸öÎ»
+ 623   3              }
+ 624   2      
+ 625   2              LCD12864_writebyte("  "); // ÏÔÊ¾¿Õ¸ñ
+ 626   2              
+ 627   2              // ÏÔÊ¾ÐÇÆÚ¼¸
+ 628   2              switch (Conver_week(time_data_1[5], time_data_1[4], time_data_1[3])) {
+ 629   3                  case 0: LCD12864_writebyte("Sun "); break; // ÐÇÆÚÌì
+ 630   3                  case 1: LCD12864_writebyte("Mon "); break; // ÐÇÆÚÒ»
+ 631   3                  case 2: LCD12864_writebyte("Tue "); break; // ÐÇÆÚ¶þ
+ 632   3                  case 3: LCD12864_writebyte("Wed "); break; // ÐÇÆÚÈý
+ 633   3                  case 4: LCD12864_writebyte("Thu "); break; // ÐÇÆÚËÄ
+ 634   3                  case 5: LCD12864_writebyte("Fri "); break; // ÐÇÆÚÎå
+ 635   3                  case 6: LCD12864_writebyte("Sat "); break; // ÐÇÆÚÁù
+ 636   3              } 
+ 637   2      
+ 638   2              LCD12864_pos(1, 0); // ÉèÖÃ LCD Î»ÖÃÎªµÚ 1 ÐÐµÚ 0 ÁÐ
+ 639   2              
+ 640   2              // ÏÔÊ¾Ð¡Ê±
+ 641   2              if (state == 4 && s0) {
+ 642   3                  LCD12864_writebyte("  "); // Èç¹û state Îª 4 ²¢ÇÒ s0 ÎªÕæ£¬ÏÔÊ¾¿Õ¸ñ
+ 643   3              } else {
+ 644   3                  LCD12864_write(1, 0x30 + time_data_1[2] / 10); // ÏÔÊ¾Ð¡Ê±µÄÊ®Î»
+ 645   3                  LCD12864_write(1, 0x30 + time_data_1[2] % 10); // ÏÔÊ¾Ð¡Ê±µÄ¸öÎ»
+ 646   3              }
+ 647   2      
+ 648   2              LCD12864_writebyte(":"); // ÏÔÊ¾·Ö¸ô·û ":"
+ 649   2              
+ 650   2              // ÏÔÊ¾·ÖÖÓ
+ 651   2              if (state == 5 && s0) {
+ 652   3                  LCD12864_writebyte("  "); // Èç¹û state Îª 5 ²¢ÇÒ s0 ÎªÕæ£¬ÏÔÊ¾¿Õ¸ñ
+ 653   3              } else {
+ 654   3                  LCD12864_write(1, 0x30 + time_data_1[1] / 10); // ÏÔÊ¾·ÖÖÓµÄÊ®Î»
+ 655   3                  LCD12864_write(1, 0x30 + time_data_1[1] % 10); // ÏÔÊ¾·ÖÖÓµÄ¸öÎ»
+ 656   3              }
+ 657   2      
+ 658   2              LCD12864_writebyte(":"); // ÏÔÊ¾·Ö¸ô·û ":"
+ 659   2              
+ 660   2              // ÏÔÊ¾ÃëÖÓ
+ 661   2              if (state == 6 && s0) {
+ 662   3                  LCD12864_writebyte("  "); // Èç¹û state Îª 6 ²¢ÇÒ s0 ÎªÕæ£¬ÏÔÊ¾¿Õ¸ñ
+ 663   3              } else {
+ 664   3                  LCD12864_write(1, 0x30 + time_data_1[0] / 10); // ÏÔÊ¾ÃëÖÓµÄÊ®Î»
+ 665   3                  LCD12864_write(1, 0x30 + time_data_1[0] % 10); // ÏÔÊ¾ÃëÖÓµÄ¸öÎ»
+ 666   3              }
+ 667   2          }
+ 668   1      }      
+ 669                // GPSÁ¬½Ó×´Ì¬
+ 670          if (GPS_time == 0) { // Èç¹ûGPSÊ±¼äÎª0£¬±íÊ¾Î´Á¬½Ó
+*** ERROR C141 IN LINE 670 OF C51.c: syntax error near 'if'
+C51 COMPILER V9.57.0.0   C51                                                               02/26/2025 10:49:05 PAGE 12  
+
+*** ERROR C141 IN LINE 670 OF C51.c: syntax error near '==', expected ')'
+ 671              if (s0) {
+*** ERROR C129 IN LINE 671 OF C51.c: missing ';' before '{'
+ 672                  LCD12864_writebyte("        "); 
+ 673                  // Èç¹ûs0ÎªÕæ£¬ÏÔÊ¾¿Õ¸ñ
+ 674              } else {
+ 675                  LCD12864_writebyte("  Search"); 
+ 676                  // Èç¹ûs0Îª¼Ù£¬ÏÔÊ¾¡°  Search¡±
+ 677              }
+ 678          } else {
+ 679              LCD12864_writebyte(" Connect"); 
+ 680              // Èç¹ûGPSÊ±¼ä²»Îª0£¬±íÊ¾ÒÑÁ¬½Ó£¬ÏÔÊ¾¡° Connect¡±
+ 681          }
+ 682          
+ 683          // ÏÔÊ¾Ä£Ê½ºÍ·½Ïò
+ 684          LCD12864_pos(2, 0); // ÉèÖÃLCDÎ»ÖÃÎªµÚ2ÐÐµÚ0ÁÐ
+ 685          if (A_M == 0) {
+ 686              LCD12864_writebyte("×Ô¶¯Ä£Ê½"); 
+ 687              // Èç¹ûA_MÎª0£¬ÏÔÊ¾¡°×Ô¶¯Ä£Ê½¡±
+ 688          } else {
+ 689              LCD12864_writebyte("ÊÖ¶¯Ä£Ê½"); 
+ 690              // Èç¹ûA_M²»Îª0£¬ÏÔÊ¾¡°ÊÖ¶¯Ä£Ê½¡±
+ 691          }
+ 692          
+ 693          if (Upstream_Down) {
+ 694              LCD12864_writebyte("    ÏÂÐÐ"); 
+ 695              // Èç¹ûUpstream_DownÎªÕæ£¬ÏÔÊ¾¡°    ÏÂÐÐ¡±
+ 696          } else {
+ 697              LCD12864_writebyte("    ÉÏÐÐ"); 
+ 698              // Èç¹ûUpstream_DownÎª¼Ù£¬ÏÔÊ¾¡°    ÉÏÐÐ¡±
+ 699          }
+ 700          
+ 701          // ÏÔÊ¾Õ¾µãÐÅÏ¢
+ 702          LCD12864_pos(3, 0); // ÉèÖÃLCDÎ»ÖÃÎªµÚ3ÐÐµÚ0ÁÐ
+ 703          
+ 704          
+ 705          if (Station_Count == 0 && position == 0) { 
+ 706            // Èç¹ûÕ¾µã¼ÆÊýÎª0ÇÒÎ»ÖÃÎª0
+ 707              if (A_M == 0) { // Èç¹ûA_MÎª0
+ 708                  if (Display_Reversal)
+ 709                      LCD12864_writebyte("    Î»ÖÃ´íÎó    "); 
+ 710                  // Èç¹ûDisplay_ReversalÎªÕæ£¬ÏÔÊ¾¡°    Î»ÖÃ´íÎó    ¡±
+ 711                  else
+ 712                      LCD12864_writebyte("Çëµ½¸½½üÕ¾µã¶¨Î»"); 
+ 713                  // Èç¹ûDisplay_ReversalÎª¼Ù£¬ÏÔÊ¾¡°Çëµ½¸½½üÕ¾µã¶¨Î»¡±
+ 714              } else {
+ 715                  LCD12864_writebyte("»¶Ó­³Ë×ø±¾´Î¹«½»"); 
+ 716                // Èç¹ûA_M²»Îª0£¬ÏÔÊ¾¡°»¶Ó­³Ë×ø±¾´Î¹«½»¡±
+ 717              }
+ 718          } else if (Station_Count != 0 && position == 0) { 
+ 719            // Èç¹ûÕ¾µã¼ÆÊý²»Îª0ÇÒÎ»ÖÃÎª0
+ 720              if (A_M == 0) { // Èç¹ûA_MÎª0£¬±íÊ¾×Ô¶¯Ä£Ê½
+ 721                  if (Upstream_Down) { 
+ 722                    // Èç¹ûUpstream_DownÎªÕæ£¬±íÊ¾ÏÂÐÐ
+ 723                      switch (Station_Count) {
+ 724                          case 1:
+ 725                              if (Display_Reversal)
+ 726                                  LCD12864_writebyte("    ÏÂÒ»Õ¾      "); 
+ 727                              // Èç¹ûDisplay_ReversalÎªÕæ£¬ÏÔÊ¾¡°    ÏÂÒ»Õ¾      ¡±
+ 728                              else
+ 729                                  LCD12864_writebyte(xiaxing2); 
+ 730                              // Èç¹ûDisplay_ReversalÎª¼Ù£¬ÏÔÊ¾xiaxing2
+C51 COMPILER V9.57.0.0   C51                                                               02/26/2025 10:49:05 PAGE 13  
+
+ 731                              break;
+ 732          
+ 733                          case 2:
+ 734                              if (Station == 2) {
+ 735                                  if (Display_Reversal)
+ 736                                      LCD12864_writebyte("    ÖÕµãÕ¾      "); 
+ 737                                  // Èç¹ûDisplay_ReversalÎªÕæ£¬ÏÔÊ¾¡°    ÖÕµãÕ¾      ¡±
+ 738                                  else
+ 739                                      LCD12864_writebyte(xiaxing2); 
+ 740                                  // Èç¹ûDisplay_ReversalÎª¼Ù£¬ÏÔÊ¾xiaxing2
+ 741                              } else {
+ 742                                  if (Display_Reversal)
+ 743                                      LCD12864_writebyte("    ÏÂÒ»Õ¾      "); 
+ 744                                  // Èç¹ûDisplay_ReversalÎªÕæ£¬ÏÔÊ¾¡°    ÏÂÒ»Õ¾      ¡±
+ 745                                  else
+ 746                                      LCD12864_writebyte(xiaxing3); 
+ 747                                  // Èç¹ûDisplay_ReversalÎª¼Ù£¬ÏÔÊ¾xiaxing3
+ 748                              }
+ 749                              break;
+ 750          
+ 751                          case 3:
+ 752                              if (Station == 3) {
+ 753                                  if (Display_Reversal)
+ 754                                      LCD12864_writebyte("    ÖÕµãÕ¾      "); 
+ 755                                  // Èç¹ûDisplay_ReversalÎªÕæ£¬ÏÔÊ¾¡°    ÖÕµãÕ¾      ¡±
+ 756                                  else
+ 757                                      LCD12864_writebyte(xiaxing3); 
+ 758                                  // Èç¹ûDisplay_ReversalÎª¼Ù£¬ÏÔÊ¾xiaxing3
+ 759                              } else {
+ 760                                  if (Display_Reversal)
+ 761                                      LCD12864_writebyte("    ÏÂÒ»Õ¾      "); 
+ 762                                  // Èç¹ûDisplay_ReversalÎªÕæ£¬ÏÔÊ¾¡°    ÏÂÒ»Õ¾      ¡±
+ 763                                  else
+ 764                                      LCD12864_writebyte(xiaxing4); 
+ 765                                  // Èç¹ûDisplay_ReversalÎª¼Ù£¬ÏÔÊ¾xiaxing4
+ 766                              }
+ 767                              break;
+ 768          
+ 769                          case 4:
+ 770                              if (Station == 4) {
+ 771                                  if (Display_Reversal)
+ 772                                      LCD12864_writebyte("    ÖÕµãÕ¾      "); 
+ 773                                  // Èç¹ûDisplay_ReversalÎªÕæ£¬ÏÔÊ¾¡°    ÖÕµãÕ¾      ¡±
+ 774                                  else
+ 775                                      LCD12864_writebyte(xiaxing4); 
+ 776                                  // Èç¹ûDisplay_ReversalÎª¼Ù£¬ÏÔÊ¾xiaxing4
+ 777                              } else {
+ 778                                  if (Display_Reversal)
+ 779                                      LCD12864_writebyte("    ÏÂÒ»Õ¾      "); 
+ 780                                  // Èç¹ûDisplay_ReversalÎªÕæ£¬ÏÔÊ¾¡°    ÏÂÒ»Õ¾      ¡±
+ 781                                  else
+ 782                                      LCD12864_writebyte(xiaxing5); 
+ 783                                  // Èç¹ûDisplay_ReversalÎª¼Ù£¬ÏÔÊ¾xiaxing5
+ 784                              }
+ 785                              break;
+ 786                              
+ 787                          case 5 :  
+ 788                                              if(Display_Reversal)  LCD12864_writebyte("    ÖÕµãÕ¾      ");
+ 789                                              // Èç¹ûDisplay_ReversalÎªÕæ£¬ÏÔÊ¾¡°    ÖÕµãÕ¾      ¡±
+ 790                                         else                 LCD12864_writebyte(xiaxing15);  
+ 791                                               // Èç¹ûDisplay_ReversalÎª¼Ù£¬ÏÔÊ¾xiaxing6
+ 792                                    break;
+C51 COMPILER V9.57.0.0   C51                                                               02/26/2025 10:49:05 PAGE 14  
+
+ 793          
+ 794                      }
+ 795                  }                      
+ 796             else   // Èç¹ûUpstream_DownÎª¼Ù£¬±íÊ¾ÉÏÐÐ
+ 797                  {
+ 798                switch (Station_Count) {
+ 799                  case 1:
+ 800                      // µ±Õ¾µã×ÜÊýÎª1Ê±
+ 801                      if (Display_Reversal)
+ 802                          // Èç¹ûÐèÒª·´ÏòÏÔÊ¾ÐÅÏ¢
+ 803                          LCD12864_writebyte("    ÏÂÒ»Õ¾      "); // ÏÔÊ¾¡°ÏÂÒ»Õ¾¡±
+ 804                      else
+ 805                          // ·ñÔòÏÔÊ¾ÉÏÐÐÕ¾µã2µÄÃû³Æ
+ 806                          LCD12864_writebyte(shangxing2);
+ 807                      break;
+ 808          
+ 809                  case 2:
+ 810                      // µ±Õ¾µã×ÜÊýÎª2Ê±
+ 811                      if (Station == 2) {
+ 812                          // Èç¹ûµ±Ç°Õ¾µãÊÇ2
+ 813                          if (Display_Reversal)
+ 814                              // Èç¹ûÐèÒª·´ÏòÏÔÊ¾ÐÅÏ¢
+ 815                              LCD12864_writebyte("    ÖÕµãÕ¾      "); // ÏÔÊ¾¡°ÖÕµãÕ¾¡±
+ 816                          else
+ 817                              // ·ñÔòÏÔÊ¾ÉÏÐÐÕ¾µã2µÄÃû³Æ
+ 818                              LCD12864_writebyte(shangxing2);
+ 819                      } else {
+ 820                          // µ±Ç°Õ¾µã²»ÊÇ2
+ 821                          if (Display_Reversal)
+ 822                              // Èç¹ûÐèÒª·´ÏòÏÔÊ¾ÐÅÏ¢
+ 823                              LCD12864_writebyte("    ÏÂÒ»Õ¾      "); // ÏÔÊ¾¡°ÏÂÒ»Õ¾¡±
+ 824                          else
+ 825                              // ·ñÔòÏÔÊ¾ÉÏÐÐÕ¾µã3µÄÃû³Æ
+ 826                              LCD12864_writebyte(shangxing3);
+ 827                      }
+ 828                      break;
+ 829          
+ 830                  case 3:
+ 831                      // µ±Õ¾µã×ÜÊýÎª3Ê±
+ 832                      if (Station == 3) {
+ 833                          // Èç¹ûµ±Ç°Õ¾µãÊÇ3
+ 834                          if (Display_Reversal)
+ 835                              // Èç¹ûÐèÒª·´ÏòÏÔÊ¾ÐÅÏ¢
+ 836                              LCD12864_writebyte("    ÖÕµãÕ¾      "); // ÏÔÊ¾¡°ÖÕµãÕ¾¡±
+ 837                          else
+ 838                              // ·ñÔòÏÔÊ¾ÉÏÐÐÕ¾µã3µÄÃû³Æ
+ 839                              LCD12864_writebyte(shangxing3);
+ 840                      } else {
+ 841                          // µ±Ç°Õ¾µã²»ÊÇ3
+ 842                          if (Display_Reversal)
+ 843                              // Èç¹ûÐèÒª·´ÏòÏÔÊ¾ÐÅÏ¢
+ 844                              LCD12864_writebyte("    ÏÂÒ»Õ¾      "); // ÏÔÊ¾¡°ÏÂÒ»Õ¾¡±
+ 845                          else
+ 846                              // ·ñÔòÏÔÊ¾ÉÏÐÐÕ¾µã4µÄÃû³Æ
+ 847                              LCD12864_writebyte(shangxing4);
+ 848                      }
+ 849                      break;
+ 850          
+ 851                  case 4:
+ 852                      // µ±Õ¾µã×ÜÊýÎª4Ê±
+ 853                      if (Station == 4) {
+ 854                          // Èç¹ûµ±Ç°Õ¾µãÊÇ4
+C51 COMPILER V9.57.0.0   C51                                                               02/26/2025 10:49:05 PAGE 15  
+
+ 855                          if (Display_Reversal)
+ 856                              // Èç¹ûÐèÒª·´ÏòÏÔÊ¾ÐÅÏ¢
+ 857                              LCD12864_writebyte("    ÖÕµãÕ¾      "); // ÏÔÊ¾¡°ÖÕµãÕ¾¡±
+ 858                          else
+ 859                              // ·ñÔòÏÔÊ¾ÉÏÐÐÕ¾µã4µÄÃû³Æ
+ 860                              LCD12864_writebyte(shangxing4);
+ 861                      } else {
+ 862                          // µ±Ç°Õ¾µã²»ÊÇ4
+ 863                          if (Display_Reversal)
+ 864                              // Èç¹ûÐèÒª·´ÏòÏÔÊ¾ÐÅÏ¢
+ 865                              LCD12864_writebyte("    ÏÂÒ»Õ¾      "); // ÏÔÊ¾¡°ÏÂÒ»Õ¾¡±
+ 866                          else
+ 867                              // ·ñÔòÏÔÊ¾ÉÏÐÐÕ¾µã5µÄÃû³Æ
+ 868                              LCD12864_writebyte(shangxing5);
+ 869                      }
+ 870                      break;
+ 871          
+ 872                      case 5 :  
+ 873                      // µ±Õ¾µã×ÜÊýÎª5Ê±            
+ 874                      if(Display_Reversal)  
+ 875                        // Èç¹ûÐèÒª·´ÏòÏÔÊ¾ÐÅÏ¢
+ 876                      LCD12864_writebyte("    ÖÕµãÕ¾      ");// ÏÔÊ¾¡°ÖÕµãÕ¾¡±
+ 877                      else
+ 878                        // ·ñÔòÏÔÊ¾ÉÏÐÐÕ¾µã5µÄÃû³Æ                 
+ 879                        LCD12864_writebyte(shangxing5);                      
+ 880                          break;
+ 881                  
+ 882              }
+ 883          }
+ 884                      
+ 885             else     //ÊÖ¶¯Ä£Ê½
+ 886              {
+ 887               if (Busy == 0) { // Èç¹ûÏµÍ³²»Ã¦
+ 888                  if (Upstream_Down) { 
+ 889                    // Èç¹ûUpstream_DownÎªÕæ£¬±íÊ¾ÏÂÐÐ
+ 890                      switch (Station_Count - 1) {
+ 891                          case 1:
+ 892                              if (Station_Count <= Station) {
+ 893                                  // µ±Ç°Õ¾µãÊýÐ¡ÓÚµÈÓÚÄ¿±êÕ¾µãÊý
+ 894                                  if (Display_Reversal)
+ 895                                      LCD12864_writebyte("      µ½Õ¾      "); 
+ 896                                  // ÏÔÊ¾¡°µ½Õ¾¡±
+ 897                                  else
+ 898                                      LCD12864_writebyte(xiaxing1); 
+ 899                                  // ÏÔÊ¾ÏÂÐÐÕ¾µã1µÄÃû³Æ
+ 900                              } else {
+ 901                                  // µ±Ç°Õ¾µãÊý´óÓÚÄ¿±êÕ¾µãÊý
+ 902                                  if (Display_Reversal)
+ 903                                      LCD12864_writebyte("    ÖÕµãÕ¾      "); 
+ 904                                  // ÏÔÊ¾¡°ÖÕµãÕ¾¡±
+ 905                                  else
+ 906                                      LCD12864_writebyte(xiaxing1); 
+ 907                                  // ÏÔÊ¾ÏÂÐÐÕ¾µã1µÄÃû³Æ
+ 908                              }
+ 909                              break;
+ 910          
+ 911                          case 2:
+ 912                              if (Station_Count <= Station) {
+ 913                                  // µ±Ç°Õ¾µãÊýÐ¡ÓÚµÈÓÚÄ¿±êÕ¾µãÊý
+ 914                                  if (Display_Reversal)
+ 915                                      LCD12864_writebyte("      µ½Õ¾      "); 
+ 916                                  // ÏÔÊ¾¡°µ½Õ¾¡±
+C51 COMPILER V9.57.0.0   C51                                                               02/26/2025 10:49:05 PAGE 16  
+
+ 917                                  else
+ 918                                      LCD12864_writebyte(xiaxing2); 
+ 919                                  // ÏÔÊ¾ÏÂÐÐÕ¾µã2µÄÃû³Æ
+ 920                              } else {
+ 921                                  // µ±Ç°Õ¾µãÊý´óÓÚÄ¿±êÕ¾µãÊý
+ 922                                  if (Display_Reversal)
+ 923                                      LCD12864_writebyte("    ÖÕµãÕ¾      "); 
+ 924                                  // ÏÔÊ¾¡°ÖÕµãÕ¾¡±
+ 925                                  else
+ 926                                      LCD12864_writebyte(xiaxing2); 
+ 927                                  // ÏÔÊ¾ÏÂÐÐÕ¾µã2µÄÃû³Æ
+ 928                              }
+ 929                              break;
+ 930          
+ 931                          case 3:
+ 932                              if (Station_Count <= Station) {
+ 933                                  // µ±Ç°Õ¾µãÊýÐ¡ÓÚµÈÓÚÄ¿±êÕ¾µãÊý
+ 934                                  if (Display_Reversal)
+ 935                                      LCD12864_writebyte("      µ½Õ¾      "); 
+ 936                                  // ÏÔÊ¾¡°µ½Õ¾¡±
+ 937                                  else
+ 938                                      LCD12864_writebyte(xiaxing3); 
+ 939                                  // ÏÔÊ¾ÏÂÐÐÕ¾µã3µÄÃû³Æ
+ 940                              } else {
+ 941                                  // µ±Ç°Õ¾µãÊý´óÓÚÄ¿±êÕ¾µãÊý
+ 942                                  if (Display_Reversal)
+ 943                                      LCD12864_writebyte("    ÖÕµãÕ¾      "); 
+ 944                                  // ÏÔÊ¾¡°ÖÕµãÕ¾¡±
+ 945                                  else
+ 946                                      LCD12864_writebyte(xiaxing3); 
+ 947                                  // ÏÔÊ¾ÏÂÐÐÕ¾µã3µÄÃû³Æ
+ 948                              }
+ 949                              break;
+ 950          
+ 951                          case 4:
+ 952                              if (Station_Count <= Station) {
+ 953                                  // µ±Ç°Õ¾µãÊýÐ¡ÓÚµÈÓÚÄ¿±êÕ¾µãÊý
+ 954                                  if (Display_Reversal)
+ 955                                      LCD12864_writebyte("      µ½Õ¾      "); 
+ 956                                  // ÏÔÊ¾¡°µ½Õ¾¡±
+ 957                                  else
+ 958                                      LCD12864_writebyte(xiaxing4); 
+ 959                                  // ÏÔÊ¾ÏÂÐÐÕ¾µã4µÄÃû³Æ
+ 960                              } else {
+ 961                                  // µ±Ç°Õ¾µãÊý´óÓÚÄ¿±êÕ¾µãÊý
+ 962                                  if (Display_Reversal)
+ 963                                      LCD12864_writebyte("    ÖÕµãÕ¾      "); 
+ 964                                  // ÏÔÊ¾¡°ÖÕµãÕ¾¡±
+ 965                                  else
+ 966                                      LCD12864_writebyte(xiaxing4); 
+ 967                                  // ÏÔÊ¾ÏÂÐÐÕ¾µã4µÄÃû³Æ
+ 968                              }
+ 969                              break;
+ 970          
+ 971                          case 5 :   
+ 972                            if(Station_Count<=Station){   
+ 973                              // µ±Ç°Õ¾µãÊýÐ¡ÓÚµÈÓÚÄ¿±êÕ¾µãÊý
+ 974                              if(Display_Reversal)  
+ 975                                LCD12864_writebyte("      µ½Õ¾      "); // ÏÔÊ¾¡°µ½Õ¾¡±
+ 976                              else                 
+ 977                                LCD12864_writebyte(xiaxing5); // ÏÔÊ¾ÏÂÐÐÕ¾µã5µÄÃû³Æ
+ 978                          }else {
+C51 COMPILER V9.57.0.0   C51                                                               02/26/2025 10:49:05 PAGE 17  
+
+ 979                                // µ±Ç°Õ¾µãÊý´óÓÚÄ¿±êÕ¾µãÊý
+ 980                            if(Display_Reversal)  
+ 981                                  LCD12864_writebyte("    ÖÕµãÕ¾      "); // ÏÔÊ¾¡°ÖÕµãÕ¾¡±
+ 982                                else                  
+ 983                                  LCD12864_writebyte(xiaxing15);// ÏÔÊ¾ÏÂÐÐÕ¾µã5µÄÃû³Æ
+ 984                              }                                                    
+ 985          break;  
+ 986          
+ 987                          
+ 988                      }
+ 989                  }
+ 990              }
+ 991            }           else {
+ 992              // ÊÖ¶¯Ä£Ê½
+ 993              switch (Station + 1 - Station_Count) {
+ 994                  // ¸ù¾Ý Station+1-Station_Count µÄÖµÑ¡Ôñ²»Í¬µÄ case ·ÖÖ§
+ 995                  case 1:
+ 996                      if (Station_Count != 1 && Station_Count <= Station) {
+ 997                          // Èç¹û Station_Count ²»ÊÇ 1 ÇÒ Station_Count Ð¡ÓÚµÈÓÚ Station
+ 998                          if (Display_Reversal)
+ 999                              LCD12864_writebyte("      µ½Õ¾      "); // ÏÔÊ¾¡°µ½Õ¾¡±
+1000                          else
+1001                              LCD12864_writebyte(shangxing1); // ÏÔÊ¾ÉÏÐÐÕ¾µã1µÄÃû³Æ
+1002                      } else {
+1003                          // ·ñÔò
+1004                          if (Display_Reversal)
+1005                              LCD12864_writebyte("    ÖÕµãÕ¾      "); // ÏÔÊ¾¡°ÖÕµãÕ¾¡±
+1006                          else
+1007                              LCD12864_writebyte(shangxing1); // ÏÔÊ¾ÉÏÐÐÕ¾µã1µÄÃû³Æ
+1008                      }
+1009                      break;
+1010          
+1011                  case 2:
+1012                      if (Station_Count != 1 && Station_Count <= Station) {
+1013                          // Èç¹û Station_Count ²»ÊÇ 1 ÇÒ Station_Count Ð¡ÓÚµÈÓÚ Station
+1014                          if (Display_Reversal)
+1015                              LCD12864_writebyte("      µ½Õ¾      "); // ÏÔÊ¾¡°µ½Õ¾¡±
+1016                          else
+1017                              LCD12864_writebyte(shangxing2); // ÏÔÊ¾ÉÏÐÐÕ¾µã2µÄÃû³Æ
+1018                      } else {
+1019                          // ·ñÔò
+1020                          if (Display_Reversal)
+1021                              LCD12864_writebyte("    ÖÕµãÕ¾      "); // ÏÔÊ¾¡°ÖÕµãÕ¾¡±
+1022                          else
+1023                              LCD12864_writebyte(shangxing2); // ÏÔÊ¾ÉÏÐÐÕ¾µã2µÄÃû³Æ
+1024                      }
+1025                      break;
+1026          
+1027                  case 3:
+1028                      if (Station_Count != 1 && Station_Count <= Station) {
+1029                          // Èç¹û Station_Count ²»ÊÇ 1 ÇÒ Station_Count Ð¡ÓÚµÈÓÚ Station
+1030                          if (Display_Reversal)
+1031                              LCD12864_writebyte("      µ½Õ¾      "); // ÏÔÊ¾¡°µ½Õ¾¡±
+1032                          else
+1033                              LCD12864_writebyte(shangxing3); // ÏÔÊ¾ÉÏÐÐÕ¾µã3µÄÃû³Æ
+1034                      } else {
+1035                          // ·ñÔò
+1036                          if (Display_Reversal)
+1037                              LCD12864_writebyte("    ÖÕµãÕ¾      "); // ÏÔÊ¾¡°ÖÕµãÕ¾¡±
+1038                          else
+1039                              LCD12864_writebyte(shangxing3); // ÏÔÊ¾ÉÏÐÐÕ¾µã3µÄÃû³Æ
+1040                      }
+C51 COMPILER V9.57.0.0   C51                                                               02/26/2025 10:49:05 PAGE 18  
+
+1041                      break;
+1042          
+1043                  case 4:
+1044                      if (Station_Count != 1 && Station_Count <= Station) {
+1045                          // Èç¹û Station_Count ²»ÊÇ 1 ÇÒ Station_Count Ð¡ÓÚµÈÓÚ Station
+1046                          if (Display_Reversal)
+1047                              LCD12864_writebyte("      µ½Õ¾      "); // ÏÔÊ¾¡°µ½Õ¾¡±
+1048                          else
+1049                              LCD12864_writebyte(shangxing4); // ÏÔÊ¾ÉÏÐÐÕ¾µã4µÄÃû³Æ
+1050                      } else {
+1051                          // ·ñÔò
+1052                          if (Display_Reversal)
+1053                              LCD12864_writebyte("    ÖÕµãÕ¾      "); // ÏÔÊ¾¡°ÖÕµãÕ¾¡±
+1054                          else
+1055                              LCD12864_writebyte(shangxing4); // ÏÔÊ¾ÉÏÐÐÕ¾µã4µÄÃû³Æ
+1056                      }
+1057                      break;
+1058          
+1059                  case 5:
+1060                      if (Station_Count != 1 && Station_Count <= Station) {
+1061                          // Èç¹û Station_Count ²»ÊÇ 1 ÇÒ Station_Count Ð¡ÓÚµÈÓÚ Station
+1062                          if (Display_Reversal)
+1063                              LCD12864_writebyte("      µ½Õ¾      "); // ÏÔÊ¾¡°µ½Õ¾¡±
+1064                          else
+1065                              LCD12864_writebyte(shangxing5); // ÏÔÊ¾ÉÏÐÐÕ¾µã5µÄÃû³Æ
+1066                      } else {
+1067                          // ·ñÔò
+1068                          if (Display_Reversal)
+1069                              LCD12864_writebyte("    ÖÕµãÕ¾      "); // ÏÔÊ¾¡°ÖÕµãÕ¾¡±
+1070                          else
+1071                              LCD12864_writebyte(shangxing5); // ÏÔÊ¾ÉÏÐÐÕ¾µã5µÄÃû³Æ
+1072                      }
+1073                      break;
+1074              }
+1075          }
+1076                                }
+1077                            }
+1078          
+1079          
+1080                        }else LCD12864_writebyte("»¶Ó­³Ë×ø±¾´Î¹«½»");
+1081            
+1082                    }
+1083            else if(Station_Count!=0&&position!=0)    {
+1084                              if(Upstream_Down) 
+1085                             {
+1086                              switch(Station_Count)
+1087                                {
+1088                                case 1 :   
+1089                                           if(Display_Reversal)  LCD12864_writebyte("      µ½Õ¾      ");  
+1090                                     else                 LCD12864_writebyte(xiaxing1);                                          
+1091                                break;      
+1092                                case 2 :  if(Display_Reversal)   LCD12864_writebyte("      µ½Õ¾      ");
+1093                                     else                  LCD12864_writebyte(xiaxing2);                                             
+1094                                break;    
+1095                                case 3 :  if(Display_Reversal)   LCD12864_writebyte("      µ½Õ¾      "); 
+1096                                     else                  LCD12864_writebyte(xiaxing3);                                           
+1097                                break;    
+1098                                case 4 :  if(Display_Reversal)   LCD12864_writebyte("      µ½Õ¾      ");
+1099                                     else                  LCD12864_writebyte(xiaxing4);                                           
+1100                                break;
+1101                      
+1102                                case 5 :  if(Display_Reversal)  LCD12864_writebyte("      µ½Õ¾      ");
+C51 COMPILER V9.57.0.0   C51                                                               02/26/2025 10:49:05 PAGE 19  
+
+1103                                     else                 LCD12864_writebyte(xiaxing5);                                        
+1104                                break;
+1105                              }
+1106                             }
+1107                             else 
+1108                              {
+1109                                switch(Station_Count)
+1110                                  {
+1111                                  case 1 :  if(Display_Reversal)  LCD12864_writebyte("      µ½Õ¾      "); 
+1112                                       else                 LCD12864_writebyte(shangxing1);                                          
+1113                                  break;      
+1114                                  case 2 :  if(Display_Reversal)   LCD12864_writebyte("      µ½Õ¾      ");
+1115                                       else                  LCD12864_writebyte(shangxing2);                                             
+1116                                  break;    
+1117                                  case 3 :  if(Display_Reversal)   LCD12864_writebyte("      µ½Õ¾      "); 
+1118                                       else                  LCD12864_writebyte(shangxing3);                                           
+1119                                  break;    
+1120                                  case 4 :  if(Display_Reversal)   LCD12864_writebyte("      µ½Õ¾      ");
+1121                                       else                  LCD12864_writebyte(shangxing4);                                           
+1122                                  break;
+1123                        
+1124                                  case 5 :  if(Display_Reversal)  LCD12864_writebyte("      µ½Õ¾      ");
+1125                                       else                 LCD12864_writebyte(shangxing5);                                        
+1126                                  break;
+1127                                }
+1128                            }
+1129                 }
+1130             }
+1131            else if(state<10)
+1132             {
+1133                LCD12864_pos(0,0);
+1134                  LCD12864_writebyte("    ÏµÍ³ÉèÖÃ    ");
+1135                  LCD12864_pos(1,0);
+1136                  LCD12864_writebyte("³µÕ¾    : ");
+1137                if(state==7&&s0) LCD12864_writebyte("  ");
+1138                else            
+1139                 {
+1140                   LCD12864_write(1,0x30+Station/10%10);
+1141                   LCD12864_write(1,0x30+Station%10);
+1142                 } 
+1143                  LCD12864_writebyte("    ");
+1144          
+1145                  LCD12864_pos(2,0);
+1146                  LCD12864_writebyte("ÒôÁ¿´óÐ¡: ");
+1147                if(state==8&&s0) LCD12864_writebyte("  ");
+1148                else 
+1149                 {
+1150                    LCD12864_write(1,0x30+Sound/10%10);
+1151                    LCD12864_write(1,0x30+Sound%10);
+1152                 }         
+1153                  LCD12864_writebyte("    ");
+1154          
+1155                LCD12864_pos(3,0);
+1156                  LCD12864_writebyte("×Ô¶¯Ð£Ê±: ");
+1157                if(state==9&&s0) LCD12864_writebyte("       ");
+1158                else 
+1159                 {
+1160                  if(GPS_Write) LCD12864_writebyte("¿ª    ");
+1161                  else      LCD12864_writebyte("¹Ø    ");
+1162                 }   
+1163          
+1164             }
+C51 COMPILER V9.57.0.0   C51                                                               02/26/2025 10:49:05 PAGE 20  
+
+1165             else if(state<11)
+1166              {
+1167                
+1168                LCD12864_pos(0,0);
+1169                LCD12864_writebyte("    ÏµÍ³ÉèÖÃ    ");
+1170                LCD12864_pos(1,0);
+1171                  LCD12864_writebyte("¾­Î³¶ÈÏÔÊ¾:     ");
+1172          
+1173                      LCD12864_pos(2,0);
+1174                  LCD12864_writebyte("Î³¶È:");
+1175                LCD12864_write(1,0x30+WD_A/100000000%10);
+1176                LCD12864_write(1,0x30+WD_A/10000000%10);
+1177                LCD12864_write(1,0x30+WD_A/1000000%10);
+1178                LCD12864_writebyte(".");
+1179                LCD12864_write(1,0x30+WD_A/100000%10);
+1180                LCD12864_write(1,0x30+WD_A/10000%10);
+1181                LCD12864_write(1,0x30+WD_A/1000%10);
+1182                LCD12864_write(1,0x30+WD_A/100%10);
+1183                LCD12864_write(1,0x30+WD_A/10%10);
+1184                LCD12864_write(1,0x30+WD_A%10);
+1185                  LCD12864_writebyte(" ");
+1186                      LCD12864_pos(3,0);
+1187                  LCD12864_writebyte("¾­¶È:");
+1188                LCD12864_write(1,0x30+JD_B/100000000%10);
+1189                LCD12864_write(1,0x30+JD_B/10000000%10);
+1190                LCD12864_write(1,0x30+JD_B/1000000%10);
+1191                LCD12864_writebyte(".");
+1192                LCD12864_write(1,0x30+JD_B/100000%10);
+1193                LCD12864_write(1,0x30+JD_B/10000%10);
+1194                LCD12864_write(1,0x30+JD_B/1000%10);
+1195                LCD12864_write(1,0x30+JD_B/100%10);
+1196                LCD12864_write(1,0x30+JD_B/10%10);
+1197                LCD12864_write(1,0x30+JD_B%10);   
+1198                LCD12864_writebyte(" ");
+1199                                
+1200              
+1201              }
+1202              else if(state>=11&&(state-11<Station))
+1203             {flag_cun=1;
+1204                      LCD12864_pos(0,0);
+1205                  LCD12864_writebyte("  ³µÕ¾ÏÂÐÐ");
+1206                if(state-10>9) LCD12864_write(1,0x30+(state-10)/10%10);
+1207                  else       LCD12864_writebyte(" ");
+1208                 LCD12864_write(1,0x30+(state-10)%10);
+1209                LCD12864_writebyte("    ");
+1210                      LCD12864_pos(1,0);
+1211                switch(state-10) 
+1212                 {
+1213                   case 1 :   LCD12864_writebyte(xiaxing1);     break;
+1214                   case 2 :   LCD12864_writebyte(xiaxing2);     break;
+1215                   case 3:    LCD12864_writebyte(xiaxing3);     break;
+1216                   case 4 :   LCD12864_writebyte(xiaxing4);     break;
+1217                   case 5 :   LCD12864_writebyte(xiaxing5);     break;
+1218                 }
+1219                                
+1220                      LCD12864_pos(2,0);
+1221                  LCD12864_writebyte("Î³¶È:");
+1222                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.xiaxing_WD_da[state-11]/100000000%10);
+1223                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.xiaxing_WD_da[state-11]/10000000%10);
+1224                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.xiaxing_WD_da[state-11]/1000000%10);
+1225                LCD12864_writebyte(".");
+1226                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.xiaxing_WD_da[state-11]/100000%10);
+C51 COMPILER V9.57.0.0   C51                                                               02/26/2025 10:49:05 PAGE 21  
+
+1227                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.xiaxing_WD_da[state-11]/10000%10);
+1228                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.xiaxing_WD_da[state-11]/1000%10);
+1229                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.xiaxing_WD_da[state-11]/100%10);
+1230                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.xiaxing_WD_da[state-11]/10%10);
+1231                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.xiaxing_WD_da[state-11]%10);
+1232                  LCD12864_writebyte(" ");
+1233                      LCD12864_pos(3,0);
+1234                  LCD12864_writebyte("¾­¶È:");
+1235                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.xiaxing_JD_da[state-11]/100000000%10);
+1236                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.xiaxing_JD_da[state-11]/10000000%10);
+1237                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.xiaxing_JD_da[state-11]/1000000%10);
+1238                LCD12864_writebyte(".");
+1239                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.xiaxing_JD_da[state-11]/100000%10);
+1240                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.xiaxing_JD_da[state-11]/10000%10);
+1241                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.xiaxing_JD_da[state-11]/1000%10);
+1242                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.xiaxing_JD_da[state-11]/100%10);
+1243                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.xiaxing_JD_da[state-11]/10%10);
+1244                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.xiaxing_JD_da[state-11]%10);    
+1245                LCD12864_writebyte(" ");      
+1246             }
+1247              else if(state>=11&&(state-11<Station*2))
+1248             {flag_cun=1;
+1249                      LCD12864_pos(0,0);
+1250                  LCD12864_writebyte("  ³µÕ¾ÉÏÐÐ");
+1251                if(state-10-Station>9) LCD12864_write(1,0x30+(state-10-Station)/10%10);
+1252                  else               LCD12864_writebyte(" ");
+1253                 LCD12864_write(1,0x30+(state-10-Station)%10);
+1254                LCD12864_writebyte("    ");
+1255                      LCD12864_pos(1,0);
+1256                switch(state-10-Station) 
+1257                 {
+1258                   case 1 :   LCD12864_writebyte(shangxing1);     break;
+1259                   case 2 :   LCD12864_writebyte(shangxing2);     break;
+1260                   case 3:    LCD12864_writebyte(shangxing3);     break;
+1261                   case 4 :   LCD12864_writebyte(shangxing4);     break;
+1262                   case 5 :   LCD12864_writebyte(shangxing5);     break;
+1263                 }
+1264                      LCD12864_pos(2,0);
+1265                  LCD12864_writebyte("Î³¶È:");
+1266                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.shangxing_WD_da[state-11-Station]/100000000%10);
+1267                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.shangxing_WD_da[state-11-Station]/10000000%10);
+1268                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.shangxing_WD_da[state-11-Station]/1000000%10);
+1269                LCD12864_writebyte(".");
+1270                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.shangxing_WD_da[state-11-Station]/100000%10);
+1271                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.shangxing_WD_da[state-11-Station]/10000%10);
+1272                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.shangxing_WD_da[state-11-Station]/1000%10);
+1273                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.shangxing_WD_da[state-11-Station]/100%10);
+1274                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.shangxing_WD_da[state-11-Station]/10%10);
+1275                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.shangxing_WD_da[state-11-Station]%10);
+1276                  LCD12864_writebyte(" ");
+1277                      LCD12864_pos(3,0);
+1278                  LCD12864_writebyte("¾­¶È:");
+1279                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.shangxing_JD_da[state-11-Station]/100000000%10);
+1280                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.shangxing_JD_da[state-11-Station]/10000000%10);
+1281                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.shangxing_JD_da[state-11-Station]/1000000%10);
+1282                LCD12864_writebyte(".");
+1283                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.shangxing_JD_da[state-11-Station]/100000%10);
+1284                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.shangxing_JD_da[state-11-Station]/10000%10);
+1285                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.shangxing_JD_da[state-11-Station]/1000%10);
+1286                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.shangxing_JD_da[state-11-Station]/100%10);
+1287                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.shangxing_JD_da[state-11-Station]/10%10);
+1288                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.shangxing_JD_da[state-11-Station]%10);    
+C51 COMPILER V9.57.0.0   C51                                                               02/26/2025 10:49:05 PAGE 22  
+
+1289                LCD12864_writebyte(" ");      
+1290             }
+1291          
+1292          //  ÎÒÏëµÄÁ÷³Ì£¬GPS¹«½»³µ£¬ÔÚÖ¸¶¨µã£¬ÏÔÊ¾  ¡°µ±Ç°Õ¾µã¡± ¡°XXXX¡±      £¬²»ÔÚÖ¸¶¨µã£¬¾ÍÏÔÊ¾   ¡°ÏÂÒ»Õ¾¡±  ¡°
+             -XXXXX¡±
+1293          //  ¸ù¾ÝÉÏÐÐÏÂÐÐÀ´ÅÐ¶ÏÏÂÒ»Õ¾µØµã    
+1294           }
+1295          
+1296          
+1297          void key_dispose() 
+1298           {
+1299              if(!key1) 
+1300             {
+1301              if(key1_flag) 
+1302               {
+1303                 key1_flag=0;
+1304                 state=(state+1)%(11+(Station*2)); 
+1305                 if(state==7)state=8;
+1306          
+1307               } 
+1308             }
+1309             else key1_flag=1;
+1310          
+1311          
+1312              if(!key2) 
+1313             {
+1314              if(key2_flag) 
+1315               {
+1316                 key2_flag=0;
+1317                  if(state==1)
+1318                    {
+1319                    time_data_1[5]=(time_data_1[5]%99)+1; 
+1320                  }
+1321                   else if(state==2)
+1322                    {
+1323                          time_data_1[4]=(time_data_1[4]%12)+1;
+1324                  }
+1325            
+1326                   else if(state==3)
+1327                    {
+1328                    if(time_data_1[4]==1|time_data_1[4]==3|time_data_1[4]==5|time_data_1[4]==7|time_data_1[4]==8|time_dat
+             -a_1[4]==10|time_data_1[4]==12)
+1329                    {
+1330                      time_data_1[3]=(time_data_1[3]%31)+1;
+1331                    }else if(time_data_1[4]==3|time_data_1[4]==6|time_data_1[4]==9|time_data_1[4]==11)
+1332                    {
+1333                      time_data_1[3]=(time_data_1[3]%30)+1;         
+1334                    }else   if((time_data_1[5]%4==0&&time_data_1[5]%100!=0)||(time_data_1[5]%400==0))
+1335                    {
+1336                      time_data_1[3]=(time_data_1[3]%29)+1;         
+1337                    }
+1338                    else 
+1339                    {
+1340                      time_data_1[3]=(time_data_1[3]%28)+1;         
+1341                    }
+1342                  }
+1343                   else if(state==4)
+1344                    {
+1345                           time_data_1[2]=(time_data_1[2]+1)%24;
+1346                  }
+1347                   else if(state==5)
+1348                    {
+C51 COMPILER V9.57.0.0   C51                                                               02/26/2025 10:49:05 PAGE 23  
+
+1349                           time_data_1[1]=(time_data_1[1]+1)%60;
+1350                  }                   
+1351                   else if(state==6)
+1352                    {
+1353                           time_data_1[0]=(time_data_1[0]+1)%60;
+1354                  }
+1355                   else if(state==7)
+1356                    {
+1357          //                  if(Station<15)   Station++;
+1358                  }
+1359                   else if(state==8)
+1360                    {
+1361                            if(Sound<30)   Sound++;
+1362                  }
+1363                   else if(state==9)
+1364                    {
+1365                            GPS_Write=1; 
+1366                  }
+1367                   else if(state==10)
+1368                    {
+1369                         //   Mode=0; 
+1370                  }   
+1371               } 
+1372               if(sec==0) 
+1373                {
+1374                        if(state==1)
+1375                      {
+1376                      time_data_1[5]=(time_data_1[5]%99)+1;               
+1377                    }
+1378                     else if(state==2)
+1379                      {
+1380                            time_data_1[4]=(time_data_1[4]%12)+1;
+1381                    }
+1382              
+1383                     else if(state==3)
+1384                      {
+1385                      if(time_data_1[4]==1|time_data_1[4]==3|time_data_1[4]==5|time_data_1[4]==7|time_data_1[4]==8|time_da
+             -ta_1[4]==10|time_data_1[4]==12)
+1386                      {
+1387                        time_data_1[3]=(time_data_1[3]%31)+1;
+1388                      }else if(time_data_1[4]==3|time_data_1[4]==6|time_data_1[4]==9|time_data_1[4]==11)
+1389                      {
+1390                        time_data_1[3]=(time_data_1[3]%30)+1;         
+1391                      }else   if((time_data_1[5]%4==0&&time_data_1[5]%100!=0)||(time_data_1[5]%400==0))
+1392                      {
+1393                        time_data_1[3]=(time_data_1[3]%29)+1;         
+1394                      }
+1395                      else 
+1396                      {
+1397                        time_data_1[3]=(time_data_1[3]%28)+1;         
+1398                      }
+1399                    }
+1400                     else if(state==4)
+1401                      {
+1402                             time_data_1[2]=(time_data_1[2]+1)%24;
+1403                    }
+1404                     else if(state==5)
+1405                      {
+1406                             time_data_1[1]=(time_data_1[1]+1)%60;
+1407                    }                   
+1408                     else if(state==6)
+1409                      {
+C51 COMPILER V9.57.0.0   C51                                                               02/26/2025 10:49:05 PAGE 24  
+
+1410                             time_data_1[0]=(time_data_1[0]+1)%60;
+1411                    }
+1412                     else if(state==7)
+1413                      {
+1414          //                    if(Station<15)   Station++;
+1415                    }
+1416                     else if(state==8)
+1417                      {
+1418                              if(Sound<30)   Sound++;
+1419                    }
+1420                     else if(state==9)
+1421                      {
+1422                              GPS_Write=1; 
+1423                    }
+1424                     else if(state==10)
+1425                      {
+1426                      //    Mode=0; 
+1427                    }
+1428                }
+1429             }
+1430             else
+1431              {
+1432                 if(key2_flag==0)
+1433                {
+1434                  key2_flag=1;
+1435                memory_flag=1;    Sound_flag=1;
+1436                }
+1437                sec=2;
+1438              } 
+1439          
+1440              if(!key3) 
+1441             {
+1442              if(key3_flag) 
+1443               {
+1444                   key3_flag=0;
+1445                  if(state==1)
+1446                    {
+1447                     if(time_data_1[5]>0)time_data_1[5]--;
+1448                  }
+1449                   else if(state==2)
+1450                    {
+1451                           if(time_data_1[4]>1)time_data_1[4]--;
+1452                  }
+1453            
+1454                   else if(state==3)
+1455                    {
+1456                           if(time_data_1[3]>1)time_data_1[3]--;
+1457                  }
+1458                   else if(state==4)
+1459                    {
+1460                           if(time_data_1[2]>0)time_data_1[2]--;
+1461                  }
+1462                   else if(state==5)
+1463                    {
+1464                          if(time_data_1[1]>0)time_data_1[1]--;
+1465                  }
+1466                   else if(state==6)
+1467                    {
+1468                          if(time_data_1[0]>0)time_data_1[0]--;
+1469                  }
+1470                  else  if(state==7)
+1471                    {
+C51 COMPILER V9.57.0.0   C51                                                               02/26/2025 10:49:05 PAGE 25  
+
+1472          //                if(Station>0)  Station--;
+1473                  }
+1474                    else  if(state==8)
+1475                    {
+1476                         if(Sound>0)   Sound--;
+1477                    }
+1478                  else  if(state==9)
+1479                  {
+1480                         GPS_Write=0; 
+1481                  }
+1482                   else if(state==10)
+1483                  {
+1484                      //          Mode=1; 
+1485                  } 
+1486               }
+1487               if(sec1==0) 
+1488                {
+1489                    if(state==1)
+1490                      {
+1491                       if(time_data_1[5]>0)time_data_1[5]--;
+1492                    }
+1493                     else if(state==2)
+1494                      {
+1495                             if(time_data_1[4]>1)time_data_1[4]--;
+1496                    }
+1497              
+1498                     else if(state==3)
+1499                      {
+1500                             if(time_data_1[3]>1)time_data_1[3]--;
+1501                    }
+1502                     else if(state==4)
+1503                      {
+1504                             if(time_data_1[2]>0)time_data_1[2]--;
+1505                    }
+1506                     else if(state==5)
+1507                      {
+1508                            if(time_data_1[1]>0)time_data_1[1]--;
+1509                    }
+1510                     else if(state==6)
+1511                      {
+1512                            if(time_data_1[0]>0)time_data_1[0]--;
+1513                    }
+1514                    else  if(state==7)
+1515                      {
+1516          //                  if(Station>0)  Station--;
+1517                    }
+1518                       else if(state==8)
+1519                       {
+1520                              if(Sound>0)  Sound--;
+1521                       }
+1522                     else if(state==9)
+1523                    {
+1524                           GPS_Write=0; 
+1525                    }
+1526                       else if(state==10)
+1527                    {
+1528                      //          Mode=1; 
+1529                    } 
+1530                }   
+1531             }
+1532             else 
+1533              {
+C51 COMPILER V9.57.0.0   C51                                                               02/26/2025 10:49:05 PAGE 26  
+
+1534                if(key3_flag==0) 
+1535               {
+1536                 key3_flag=1;
+1537                 memory_flag=1;   Sound_flag=1;
+1538               }
+1539               sec1=2;
+1540              }
+1541          
+1542            if(!key4) 
+1543             {
+1544               if(key4_flag)
+1545                {
+1546                 key4_flag=0;
+1547                 if(state==0) 
+1548                  {
+1549                   A_M=~A_M;
+1550                   Upstream_Down=1;
+1551                   memory_flag=1;
+1552                }
+1553              }
+1554             }
+1555             else 
+1556             {
+1557               key4_flag=1;
+1558             }
+1559          
+1560            if(!key5) 
+1561             {
+1562               if(key5_flag)
+1563                {
+1564                 key5_flag=0;
+1565                 if(state==0) 
+1566                  {
+1567                   Upstream_Down=~Upstream_Down;
+1568                   if(A_M) 
+1569                    {
+1570                     if(Upstream_Down)      //ËµÃ÷ÊÇÏÂÐÐ
+1571                      {
+1572                      Station_Count=0;
+1573                    }
+1574                    else           //ËµÃ÷ÊÇÉÏÐÐ
+1575                     {
+1576                       Station_Count=7;
+1577                     }
+1578                  }
+1579                }
+1580              }
+1581             }
+1582             else 
+1583             {
+1584               if(key5_flag==0)
+1585                {
+1586                key5_flag=1;
+1587                memory_flag=1;
+1588              }
+1589               
+1590             }
+1591          
+1592            if(!key6) 
+1593             {
+1594               if(key6_flag&&state==0)
+1595                {
+C51 COMPILER V9.57.0.0   C51                                                               02/26/2025 10:49:05 PAGE 27  
+
+1596                 key6_flag=0;
+1597                     
+1598                    if(A_M) 
+1599                     {
+1600                       position=0;
+1601                       if(Upstream_Down)    //Èç¹ûÊÇÏÂÐÐ
+1602                        {
+1603                         if(Station_Count<Station+1) 
+1604                          {   
+1605                          Send_Appoint_Music(Station_Count);   //ÏÂÐÐÕý³£²¥±¨
+1606                          Station_Count++;
+1607                        }
+1608                        else 
+1609                         {
+1610                           Upstream_Down=0; 
+1611                           Send_Appoint_Music(Station+1); //ÖÕµãÕ¾  
+1612                           Station_Count--;
+1613                         }
+1614                      }
+1615                      else          //Èç¹ûÊÇÉÏÐÐ
+1616                       {
+1617                         if(Station_Count>1) 
+1618                          {
+1619                          Station_Count--;
+1620                          Send_Appoint_Music(((Station+1)-Station_Count)+Station); //ÖÕµãÕ¾ 
+1621                        }
+1622                        else 
+1623                         {
+1624                           Upstream_Down=1;
+1625                           Send_Appoint_Music(Station_Count);   //ÏÂÐÐÕý³£²¥±¨
+1626                           Station_Count++;
+1627                         }
+1628                       }             
+1629                     } 
+1630              }
+1631             }
+1632             else 
+1633             {
+1634               key6_flag=1;
+1635             }
+1636            if((!key7)&&(flag_cun!=0))//È·¶¨´æ´¢¾­Î³¶È
+1637            { 
+1638          //     LCD12864_pos(2,0);
+1639          //        LCD12864_writebyte("Î³¶È:");
+1640          //      LCD12864_write(1,0x30+WD_A/100000000%10);
+1641          
+1642          //            LCD12864_pos(3,0);
+1643          //        LCD12864_writebyte("¾­¶È:");
+1644          //      LCD12864_write(1,0x30+JD_B/100000000%10);
+1645                
+1646              if(state>=11&&(state-11<Station))
+1647             {  gps_cun.Vehicle_Obj.xiaxing_WD_da[state-11]=WD_A;
+1648                gps_cun.Vehicle_Obj.xiaxing_JD_da[state-11]=JD_B;
+1649                LCD12864_pos(2,0);
+1650                LCD12864_writebyte("Î³¶È:");
+1651                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.xiaxing_WD_da[state-11]/100000000%10);
+1652                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.xiaxing_WD_da[state-11]/10000000%10);
+1653                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.xiaxing_WD_da[state-11]/1000000%10);
+1654                LCD12864_writebyte(".");
+1655                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.xiaxing_WD_da[state-11]/100000%10);
+1656                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.xiaxing_WD_da[state-11]/10000%10);
+1657                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.xiaxing_WD_da[state-11]/1000%10);
+C51 COMPILER V9.57.0.0   C51                                                               02/26/2025 10:49:05 PAGE 28  
+
+1658                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.xiaxing_WD_da[state-11]/100%10);
+1659                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.xiaxing_WD_da[state-11]/10%10);
+1660                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.xiaxing_WD_da[state-11]%10);
+1661                LCD12864_writebyte(" ");
+1662                LCD12864_pos(3,0);
+1663                LCD12864_writebyte("¾­¶È:");
+1664                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.xiaxing_JD_da[state-11]/100000000%10);
+1665                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.xiaxing_JD_da[state-11]/10000000%10);
+1666                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.xiaxing_JD_da[state-11]/1000000%10);
+1667                LCD12864_writebyte(".");
+1668                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.xiaxing_JD_da[state-11]/100000%10);
+1669                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.xiaxing_JD_da[state-11]/10000%10);
+1670                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.xiaxing_JD_da[state-11]/1000%10);
+1671                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.xiaxing_JD_da[state-11]/100%10);
+1672                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.xiaxing_JD_da[state-11]/10%10);
+1673                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.xiaxing_JD_da[state-11]%10);    
+1674                LCD12864_writebyte(" ");      
+1675             }
+1676              else if(state>=11&&(state-11<Station*2))
+1677             {  gps_cun.Vehicle_Obj.shangxing_JD_da[state-11-Station]=JD_B;
+1678                gps_cun.Vehicle_Obj.shangxing_WD_da[state-11-Station]=WD_A;
+1679                LCD12864_pos(2,0);
+1680                LCD12864_writebyte("Î³¶È:");
+1681                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.shangxing_WD_da[state-11-Station]/100000000%10);
+1682                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.shangxing_WD_da[state-11-Station]/10000000%10);
+1683                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.shangxing_WD_da[state-11-Station]/1000000%10);
+1684                LCD12864_writebyte(".");
+1685                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.shangxing_WD_da[state-11-Station]/100000%10);
+1686                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.shangxing_WD_da[state-11-Station]/10000%10);
+1687                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.shangxing_WD_da[state-11-Station]/1000%10);
+1688                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.shangxing_WD_da[state-11-Station]/100%10);
+1689                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.shangxing_WD_da[state-11-Station]/10%10);
+1690                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.shangxing_WD_da[state-11-Station]%10);
+1691                  LCD12864_writebyte(" ");
+1692                      LCD12864_pos(3,0);
+1693                  LCD12864_writebyte("¾­¶È:");
+1694                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.shangxing_JD_da[state-11-Station]/100000000%10);
+1695                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.shangxing_JD_da[state-11-Station]/10000000%10);
+1696                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.shangxing_JD_da[state-11-Station]/1000000%10);
+1697                LCD12864_writebyte(".");
+1698                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.shangxing_JD_da[state-11-Station]/100000%10);
+1699                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.shangxing_JD_da[state-11-Station]/10000%10);
+1700                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.shangxing_JD_da[state-11-Station]/1000%10);
+1701                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.shangxing_JD_da[state-11-Station]/100%10);
+1702                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.shangxing_JD_da[state-11-Station]/10%10);
+1703                LCD12864_write(1,0x30+gps_cun.Vehicle_Obj.shangxing_JD_da[state-11-Station]%10);    
+1704                LCD12864_writebyte(" ");      
+1705             }
+1706          
+1707              sequential_write_flash_in_one_sector(0x08200, sizeof(gps_data), pp);;
+1708              while(!key7);
+1709            }
+1710            if(!key8) 
+1711             {
+1712                if(key8_flag) 
+1713               {
+1714                 key8_flag=0;
+1715                 state=0;
+1716                 flag_cun=0; 
+1717               }
+1718             }
+1719             else 
+C51 COMPILER V9.57.0.0   C51                                                               02/26/2025 10:49:05 PAGE 29  
+
+1720              {
+1721              key8_flag=1;
+1722            }
+1723          
+1724          
+1725           }
+1726          //ÅäÖÃ¶¨Ê±0ÓÃ×÷³£¹æ¶¨Ê±£¬Ê¹ÓÃ¶¨Ê±Æ÷1ÓÃ×÷´®¿Ú1²¨ÌØÂÊ·¢ÉúÆ÷£¬9600
+1727          void TimeInt(void)     //ÏµÍ³¶¨Ê±Æ÷³õÊ¼»¯ÅäÖÃ
+1728          {
+1729            TMOD=0x21;     //¶¨ÒåÁ½¸ö¶¨Ê±Æ÷
+1730            TH1=0xFD;
+1731            TL1=0xFD;    //¶¨Ê±Æ÷1ÓÃÓÚ²úÉú²¨ÌØÂÊ  ¾§Õñ11.0592
+1732            TL0 = 0x00;   //ÉèÖÃ¶¨Ê±³õÖµ
+1733            TH0 = 0x4C;   //ÉèÖÃ¶¨Ê±³õÖµ  
+1734            SCON=0x50;
+1735            PCON=0;
+1736            EA=1;          //¿ª×ÜÖÐ¶Ï
+1737            ES=1;          //ES-´®ÐÐÖÐ¶ÏÔÊÐí¿ØÖÆÎ»   ES = 1   ÔÊÐí´®ÐÐÖÐ¶Ï¡£
+1738            TR1=1;         //Æô¶¯¶¨Ê±Æ÷¿ªÊ¼¹¤×÷
+1739            ET0=1;
+1740            TR0=1;  
+1741          }
+1742          
+1743          void led_dispose()  //LEDÏÔÊ¾º¯Êý
+1744           {
+1745             if(A_M) 
+1746              {
+1747              led0=0;
+1748              led1=1;
+1749            }
+1750            else 
+1751            {
+1752              led0=1;
+1753              led1=0;
+1754            }
+1755          
+1756             if(Upstream_Down) 
+1757              {
+1758              led2=0;
+1759              led3=1;
+1760            }
+1761            else 
+1762            {
+1763              led2=1;
+1764              led3=0;
+1765            }
+1766           }
+1767          
+1768          void GPS_Route_Dispose()
+1769           {
+1770            if(A_M==0)   
+1771             {    
+1772               
+1773              if((gps_cun.Vehicle_Obj.xiaxing_JD_da[0]+JD_Difference>=JD_B)&&(JD_B>=gps_cun.Vehicle_Obj.xiaxing_JD_da
+             -[0]-JD_Difference)&&(gps_cun.Vehicle_Obj.xiaxing_WD_da[0]+WD_Difference>=WD_A)&&(WD_A>=gps_cun.Vehicle_Obj.xiaxing_WD_da
+             -[0]-WD_Difference))
+1774               {
+1775                  Upstream_Down=1;
+1776               }
+1777               else if((gps_cun.Vehicle_Obj.shangxing_JD_da[0]+JD_Difference>=JD_B)&&(JD_B>=gps_cun.Vehicle_Obj.shang
+             -xing_JD_da[0]-JD_Difference)&&(gps_cun.Vehicle_Obj.shangxing_WD_da[0]+WD_Difference>=WD_A)&&(WD_A>=gps_cun.Vehicle_Obj.s
+             -hangxing_WD_da[0]-WD_Difference))
+C51 COMPILER V9.57.0.0   C51                                                               02/26/2025 10:49:05 PAGE 30  
+
+1778              {
+1779                  Upstream_Down=0;
+1780              }
+1781               
+1782               
+1783               if(Upstream_Down==1)   //µÈÓÚ1£¬ËµÃ÷×Ô¶¯Ä£Ê½ÏÂ´¦ÓÚÏÂÐÐ×´Ì¬£¬ÕâÊ±ºò¶Ô¼ì²âµ½µÄGPS£¬×ö³ö¶ÔÓ¦´¦Àí
+1784                 {
+1785                      if((gps_cun.Vehicle_Obj.xiaxing_JD_da[0]+JD_Difference>=JD_B)&&(JD_B>=gps_cun.Vehicle_Obj.xiaxing_J
+             -D_da[0]-JD_Difference)&&(gps_cun.Vehicle_Obj.xiaxing_WD_da[0]+WD_Difference>=WD_A)&&(WD_A>=gps_cun.Vehicle_Obj.xiaxing_W
+             -D_da[0]-WD_Difference))
+1786                       {
+1787                         Station_Count=1;  position=1;
+1788                       if(count!=Station_Count)
+1789                        {
+1790                          count=Station_Count;
+1791                        Send_Appoint_Music(Station_Count);   //ÏÂÐÐÕý³£²¥±¨
+1792          
+1793                        }
+1794                       }
+1795                       else  if((gps_cun.Vehicle_Obj.xiaxing_JD_da[1]+JD_Difference>JD_B)&&(JD_B>gps_cun.Vehicle_Obj.xiax
+             -ing_JD_da[1]-JD_Difference)&&(gps_cun.Vehicle_Obj.xiaxing_WD_da[1]+WD_Difference>WD_A)&&(WD_A>gps_cun.Vehicle_Obj.xiaxin
+             -g_WD_da[1]-WD_Difference))
+1796                       {
+1797                         Station_Count=2;  position=1;
+1798                       if(count!=Station_Count)
+1799                        {
+1800                         if(count!=Station_Count)
+1801                          {
+1802                            count=Station_Count;
+1803                          Send_Appoint_Music(Station_Count);   //ÏÂÐÐÕý³£²¥±¨
+1804                          }
+1805                        }
+1806                       }
+1807                       else  if((gps_cun.Vehicle_Obj.xiaxing_JD_da[2]+JD_Difference>JD_B)&&(JD_B>gps_cun.Vehicle_Obj.xiax
+             -ing_JD_da[2]-JD_Difference)&&(gps_cun.Vehicle_Obj.xiaxing_WD_da[2]+WD_Difference>WD_A)&&(WD_A>gps_cun.Vehicle_Obj.xiaxin
+             -g_WD_da[2]-WD_Difference))
+1808                       {
+1809                         Station_Count=3;  position=1;
+1810                       if(count!=Station_Count)
+1811                        {
+1812                         if(count!=Station_Count)
+1813                          {
+1814                            count=Station_Count;
+1815                          Send_Appoint_Music(Station_Count);   //ÏÂÐÐÕý³£²¥±¨ 
+1816                          }
+1817                        }
+1818                       }
+1819                       else  if((gps_cun.Vehicle_Obj.xiaxing_JD_da[3]+JD_Difference>JD_B)&&(JD_B>gps_cun.Vehicle_Obj.xiax
+             -ing_JD_da[3]-JD_Difference)&&(gps_cun.Vehicle_Obj.xiaxing_WD_da[3]+WD_Difference>WD_A)&&(WD_A>gps_cun.Vehicle_Obj.xiaxin
+             -g_WD_da[3]-WD_Difference))
+1820                       {
+1821                         Station_Count=4;  position=1;
+1822                       if(count!=Station_Count)
+1823                        {
+1824                         if(count!=Station_Count)
+1825                          {
+1826                            count=Station_Count;
+1827                          Send_Appoint_Music(Station_Count);   //ÏÂÐÐÕý³£²¥±¨
+1828                        
+1829                          }
+1830                        }
+1831                       }
+C51 COMPILER V9.57.0.0   C51                                                               02/26/2025 10:49:05 PAGE 31  
+
+1832                       else  if((gps_cun.Vehicle_Obj.xiaxing_JD_da[4]+JD_Difference>JD_B)&&(JD_B>gps_cun.Vehicle_Obj.xiax
+             -ing_JD_da[4]-JD_Difference)&&(gps_cun.Vehicle_Obj.xiaxing_WD_da[4]+WD_Difference>WD_A)&&(WD_A>gps_cun.Vehicle_Obj.xiaxin
+             -g_WD_da[4]-WD_Difference))
+1833                       {
+1834                         Station_Count=5;   position=1;
+1835                       if(count!=Station_Count)
+1836                        {
+1837                         if(count!=Station_Count)
+1838                          {
+1839                            count=Station_Count;
+1840                          Send_Appoint_Music(Station_Count);   //ÏÂÐÐÕý³£²¥±¨
+1841                          }
+1842                        }
+1843                       }
+1844                       else  position=0;
+1845                 
+1846                 }
+1847                 else       //ÏÂÃæÊÇÉÏÐÐÊý¾Ý
+1848                  {     
+1849                        if((gps_cun.Vehicle_Obj.shangxing_JD_da[0]+JD_Difference>=JD_B)&&(JD_B>=gps_cun.Vehicle_Obj.shangx
+             -ing_JD_da[0]-JD_Difference)&&(gps_cun.Vehicle_Obj.shangxing_WD_da[0]+WD_Difference>=WD_A)&&(WD_A>=gps_cun.Vehicle_Obj.sh
+             -angxing_WD_da[0]-WD_Difference))
+1850                         {
+1851                           Station_Count=1;  position=1;
+1852                         if(count!=Station_Count)
+1853                          {
+1854                            count=Station_Count;
+1855                          Send_Appoint_Music(Station+1);   //ÏÂÐÐÕý³£²¥±¨
+1856            
+1857                          }
+1858                         }
+1859                         else  if((gps_cun.Vehicle_Obj.shangxing_JD_da[1]+JD_Difference>=JD_B)&&(JD_B>=gps_cun.Vehicle_Obj
+             -.shangxing_JD_da[1]-JD_Difference)&&(gps_cun.Vehicle_Obj.shangxing_WD_da[1]+WD_Difference>=WD_A)&&(WD_A>=gps_cun.Vehicle
+             -_Obj.shangxing_WD_da[1]-WD_Difference))
+1860                         {
+1861                           Station_Count=2;  position=1;
+1862                         if(count!=Station_Count)
+1863                          {
+1864                           if(count!=Station_Count)
+1865                            {
+1866                              count=Station_Count;
+1867                            Send_Appoint_Music(Station+2);   //ÏÂÐÐÕý³£²¥±¨
+1868                            }
+1869                          }
+1870                         }
+1871                         else  if((gps_cun.Vehicle_Obj.shangxing_JD_da[2]+JD_Difference>=JD_B)&&(JD_B>=gps_cun.Vehicle_Obj
+             -.shangxing_JD_da[2]-JD_Difference)&&(gps_cun.Vehicle_Obj.shangxing_WD_da[2]+WD_Difference>=WD_A)&&(WD_A>=gps_cun.Vehicle
+             -_Obj.shangxing_WD_da[2]-WD_Difference))
+1872                         {
+1873                           Station_Count=3;  position=1;
+1874                         if(count!=Station_Count)
+1875                          {
+1876                           if(count!=Station_Count)
+1877                            {
+1878                              count=Station_Count;
+1879                            Send_Appoint_Music(Station+3);   //ÏÂÐÐÕý³£²¥±¨ 
+1880                            }
+1881                          }
+1882                         }
+1883                         else  if((gps_cun.Vehicle_Obj.shangxing_JD_da[3]+JD_Difference>=JD_B)&&(JD_B>=gps_cun.Vehicle_Obj
+             -.shangxing_JD_da[3]-JD_Difference)&&(gps_cun.Vehicle_Obj.shangxing_WD_da[3]+WD_Difference>=WD_A)&&(WD_A>=gps_cun.Vehicle
+             -_Obj.shangxing_WD_da[3]-WD_Difference))
+C51 COMPILER V9.57.0.0   C51                                                               02/26/2025 10:49:05 PAGE 32  
+
+1884                         {
+1885                           Station_Count=4;  position=1;
+1886                         if(count!=Station_Count)
+1887                          {
+1888                           if(count!=Station_Count)
+1889                            {
+1890                              count=Station_Count;
+1891                            Send_Appoint_Music(Station+4);   //ÏÂÐÐÕý³£²¥±¨
+1892                          
+1893                            }
+1894                          }
+1895                         }
+1896                         else  if((gps_cun.Vehicle_Obj.shangxing_JD_da[4]+JD_Difference>=JD_B)&&(JD_B>=gps_cun.Vehicle_Obj
+             -.shangxing_JD_da[4]-JD_Difference)&&(gps_cun.Vehicle_Obj.shangxing_WD_da[4]+WD_Difference>=WD_A)&&(WD_A>=gps_cun.Vehicle
+             -_Obj.shangxing_WD_da[4]-WD_Difference))
+1897                         {
+1898                           Station_Count=5;   position=1;
+1899                         if(count!=Station_Count)
+1900                          {
+1901                           if(count!=Station_Count)
+1902                            {
+1903                              count=Station_Count;
+1904                            Send_Appoint_Music(Station+5);   //ÏÂÐÐÕý³£²¥±¨
+1905                            }
+1906                          }
+1907                         }
+1908                         else  position=0;      
+1909                }  
+1910               }
+1911             }
+1912          void main()
+1913           {
+1914             TimeInt();
+1915             LCD12864_init();      //µ÷ÓÃÏÔÊ¾º¯Êý
+1916          // Send_Appoint_Music(1);
+1917          
+1918             read_memory();
+1919            Mode=0;
+1920             if(Mode) 
+1921              {
+1922              
+1923            }
+1924              read_GPS();
+1925          
+1926             while(1) 
+1927              {  
+1928              read_time1();  //¶ÁÈ¡Ê±¼äº¯Êý£¬GPS_WriteµÈÓÚ1£¬ËµÃ÷½«»ñÈ¡µÄGPSÊÇ½«¸³Öµ¸øÊ±¼ä
+1929              GPS_Route_Dispose();
+1930              Display();     //ÏÔÊ¾º¯Êý
+1931              key_dispose();   //°´¼ü´¦Àíº¯Êý
+1932              memory();
+1933              memory_GPS();
+1934              led_dispose();
+1935          
+1936              if(Busy==0) 
+1937               {
+1938                 if(Sound_flag)
+1939                {  
+1940                  Sound_flag=0;
+1941                  Send_Appoint_Sound(Sound); 
+1942                }
+1943               }
+C51 COMPILER V9.57.0.0   C51                                                               02/26/2025 10:49:05 PAGE 33  
+
+1944            }
+1945           }
+1946          
+1947          
+1948          //¶¨Ê±Æ÷0ÖÐ¶Ï·þÎñº¯Êý
+1949          void time0() interrupt 1
+1950           {
+1951             TH0=0x3C;
+1952             TL0=0xb0;      //¶¨Ê±ÖÐ¶Ï50ms
+1953             ms++;      //ms±äÁ¿Ïàµ±ÓÚ50ms¼ÓÒ»
+1954             key_dispose();
+1955            if(ms%10==0)  //500ºÁÃëÖ´ÐÐÒ»´Î
+1956             { 
+1957               Sound_flag=1;
+1958               s0=~s0;
+1959               if(GPS_time!=0) GPS_time--; //ÅÐ¶ÏGPSÐÅºÅÊÇ·ñ¶ªÊ§±äÁ¿Ã¿¸ô500ms¼õÒ»
+1960             } 
+1961            if(ms%20==0)   
+1962             {
+1963                 if(sec!=0) sec--;
+1964               if(sec1!=0) sec1--;   Display_Reversal=~Display_Reversal;
+1965             }  
+1966          
+1967             if(ms>=40)
+1968              {
+1969               ms=0;   //Ò»Ãë¶¨Ê±£¬ÇåÁã 
+1970            }
+1971           }
+1972          
+1973          
+1974          //  Í¨Ñ¶ÖÐ¶Ï½ÓÊÕ³ÌÐò   ÖÐ¶Ïº¯ÊýÎÞ·µ»ØÖµ
+1975          void uart_rx(void)  interrupt 4   
+1976          {
+1977            float abc,de,fghi;
+1978            uchar i,j,k;
+1979            if (RI)
+1980              {
+1981                  RI=0; 
+1982              GPS_dat[subscript]=SBUF;
+1983              subscript=(subscript+1)%100;
+1984              if(GPS_dat[(subscript+100-1)%100] == '\n'&&GPS_dat[(subscript+100-2)%100] == '\r')
+1985              {     
+1986                if(verify_GPSdat("$GPGLL,")==1)
+1987                {
+1988                  if(subscript>30)
+1989                  {
+1990                    for(i=7;GPS_dat[i]!='N';i++)
+1991                    {
+1992                      if(i>21) break;
+1993                    }
+1994                    if(i<22)
+1995                    {
+1996                      for(k=0;k<(i-8);k++)
+1997                      {
+1998                        A_dat[k]=GPS_dat[7+k];  
+1999                        A_dat[k+1]=0;
+2000                      }
+2001                      if(A_dat[3]=='.')
+2002                      {
+2003                        abc=(A_dat[0]-0x30);
+2004                        de=(A_dat[1]-0x30)*10+(A_dat[2]-0x30);
+2005                        fghi=(A_dat[4]-0x30)*1000+(A_dat[5]-0x30)*100+(A_dat[6]-0x30)*10+(A_dat[7]-0x30)+(A_dat[8]-0x30)*1.
+C51 COMPILER V9.57.0.0   C51                                                               02/26/2025 10:49:05 PAGE 34  
+
+             -0;
+2006                        latitude = abc+(de/60.0)+(fghi/600000.0);
+2007                        WD_A=latitude*1000000;
+2008          
+2009                      }else if(A_dat[4]=='.')
+2010                      {
+2011                        abc=(A_dat[0]-0x30)*10+(A_dat[1]-0x30);
+2012                        de=(A_dat[2]-0x30)*10+(A_dat[3]-0x30);
+2013                        fghi=(A_dat[5]-0x30)*1000+(A_dat[6]-0x30)*100+(A_dat[7]-0x30)*10+(A_dat[8]-0x30)+(A_dat[9]-0x30)*0.
+             -1;
+2014                        latitude = abc+(de/60.0)+(fghi/600000.0);
+2015                        WD_A=latitude*1000000;
+2016                      }
+2017                    }
+2018                    for(j=i;GPS_dat[j]!='E';j++)
+2019                    {
+2020                      if(j>40) break;
+2021                    }
+2022                    if(j<40)
+2023                    {
+2024                      for(k=0;k<(j-i-3);k++)
+2025                      {
+2026                        B_dat[k]=GPS_dat[i+2+k];
+2027                        B_dat[k+1]=0; 
+2028                      }
+2029                      if(B_dat[4]=='.')
+2030                      {
+2031                        abc=(B_dat[0]-0x30)*10+(B_dat[1]-0x30);
+2032                        de=(B_dat[2]-0x30)*10+(B_dat[3]-0x30);
+2033                        fghi=(B_dat[5]-0x30)*1000+(B_dat[6]-0x30)*100+(B_dat[7]-0x30)*10+(B_dat[8]-0x30)+(B_dat[9]-0x30)*0.
+             -1;
+2034                        longitude = abc+(de/60.0)+(fghi/600000.0);
+2035                        JD_B=longitude*1000000;
+2036                      }else if(B_dat[5]=='.')
+2037                      {
+2038                        abc=(B_dat[0]-0x30)*100+(B_dat[1]-0x30)*10+(B_dat[2]-0x30);
+2039                        de=(B_dat[3]-0x30)*10+(B_dat[4]-0x30);
+2040                        fghi=(B_dat[6]-0x30)*1000+(B_dat[7]-0x30)*100+(B_dat[8]-0x30)*10+(B_dat[9]-0x30)+(B_dat[10]-0x30)*0
+             -.1;
+2041                        longitude = abc+(de/60.0)+(fghi/600000.0);
+2042                        JD_B=longitude*1000000;
+2043                      }
+2044                    }
+2045                    GPS_time=10;
+2046                  }else
+2047                  {
+2048                  //  longitude=0;
+2049                  //  latitude=0; 
+2050                    for(i=0;i<20;i++)
+2051                    {
+2052                      A_dat[i]=0;
+2053                      B_dat[i]=0; 
+2054                    }
+2055                  }                                           
+2056                }
+2057                if(verify_GPSdat("$GPRMC,")==1 && GPS_dat[17] == 'A' && GPS_dat[51] == ',' && GPS_dat[52] == ','&&GPS_W
+             -rite==1)
+2058                {
+2059                  Time_Calibration=10;
+2060                  NowTime[2]=(GPS_dat[7]-0x30)*10+(GPS_dat[8]-0x30);
+2061                  NowTime[1]=(GPS_dat[9]-0x30)*10+(GPS_dat[10]-0x30);
+2062                  NowTime[0]=(GPS_dat[11]-0x30)*10+(GPS_dat[12]-0x30);
+C51 COMPILER V9.57.0.0   C51                                                               02/26/2025 10:49:05 PAGE 35  
+
+2063                  
+2064                  NowTime[3]=(GPS_dat[53]-0x30)*10+(GPS_dat[54]-0x30);
+2065                  NowTime[4]=(GPS_dat[55]-0x30)*10+(GPS_dat[56]-0x30);
+2066                  NowTime[6]=(GPS_dat[57]-0x30)*10+(GPS_dat[58]-0x30);
+2067                  NowTime[2]=NowTime[2]+8;
+2068                  
+2069                  if(NowTime[2]>=24)
+2070                  {
+2071                    NowTime[2]=NowTime[2]%24;
+2072                    NowTime[3]=NowTime[3]+1;
+2073                    if(NowTime[4]==1|NowTime[4]==3|NowTime[4]==5|NowTime[4]==7|NowTime[4]==8|NowTime[4]==10|NowTime[4]==1
+             -2)
+2074                    {
+2075                      if(NowTime[3]>31)
+2076                      {
+2077                        NowTime[3]=NowTime[3]-31;
+2078                        NowTime[4]=NowTime[4]+1;
+2079                        if(NowTime[4]>12)
+2080                        {
+2081                          NowTime[4]=NowTime[4]-12;
+2082                          NowTime[6]++;
+2083                        } 
+2084                      }
+2085                    }else if(NowTime[4]==4|NowTime[4]==6|NowTime[4]==9|NowTime[4]==11)
+2086                    {
+2087                      if(NowTime[3]>30)
+2088                      {
+2089                        NowTime[3]=NowTime[3]-30;
+2090                        NowTime[4]=NowTime[4]+1;
+2091                        if(NowTime[4]>12)
+2092                        {
+2093                          NowTime[4]=NowTime[4]-12;
+2094                          NowTime[6]++;
+2095                        } 
+2096                      }     
+2097                    }else
+2098                    {
+2099                      if(NowTime[3]>29)
+2100                      {
+2101                        NowTime[3]=NowTime[3]-29;
+2102                        NowTime[4]=NowTime[4]+1;
+2103                        if(NowTime[4]>12)
+2104                        {
+2105                          NowTime[4]=NowTime[4]-12;
+2106                          NowTime[6]++;
+2107                        } 
+2108                      }     
+2109                    }   
+2110                  }   // 0 Ãë  1·Ö  2Ê± £¬ÈýÈÕ  ËÄÔÂ   6 Äê
+2111                      ds1302write(0x8e,0x00); 
+2112                      ds1302write(0x80,0x80);
+2113                      for(i=0;i<7;i++)
+2114                      {
+2115                        time_data_2[i]=NowTime[i]/10;
+2116                        time_data_3[i]=NowTime[i]%10;   
+2117                      }
+2118                      for(i=0;i<7;i++)
+2119                      {
+2120                        time_data_4[i]=time_data_2[i]*16+time_data_3[i];              
+2121                      }
+2122                      ds1302write(0x80,time_data_4[0]);
+2123                      ds1302write(0x82,time_data_4[1]);
+C51 COMPILER V9.57.0.0   C51                                                               02/26/2025 10:49:05 PAGE 36  
+
+2124                      ds1302write(0x84,time_data_4[2]);
+2125                      ds1302write(0x86,time_data_4[3]);
+2126                      ds1302write(0x88,time_data_4[4]);
+2127                      ds1302write(0x8C,time_data_4[6]);
+2128                      GPS_Write=0;
+2129                }
+2130                subscript=0;
+2131              }
+2132            }
+2133          }
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  3 ERROR(S)
